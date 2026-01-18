@@ -205,7 +205,7 @@ export function Dashboard() {
 
         {/* Leaderboard with tabs */}
         <div className="mb-6">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden relative ${refreshing ? 'crt-flicker' : ''}`}>
             {/* Tabs */}
             <div className="flex border-b border-gray-200 dark:border-gray-700">
               <button

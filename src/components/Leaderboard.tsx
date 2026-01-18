@@ -10,9 +10,18 @@ interface LeaderboardProps {
  * Leaderboard component - displays ranked users by coding time
  */
 export function Leaderboard({ title, entries, loading }: LeaderboardProps) {
-  // Dynamic meme subtitles based on position (top vs bottom)
-  const getSubtitle = (rank: number, totalEntries: number): string => {
-    // Top performer gets praise
+  // Helper function to randomly select a message from an array
+  const randomMessage = (messages: string[]): string => {
+    return messages[Math.floor(Math.random() * messages.length)];
+  };
+
+  // Enhanced status message with Hinglish/Nepali humor and conditional logic
+  const getStatusMessage = (rank: number, totalEntries: number, totalSeconds: number, username?: string, displayName?: string | null, dailySeconds?: number): string => {
+    const hours = totalSeconds / 3600;
+    const dailyHours = dailySeconds ? dailySeconds / 3600 : 0;
+    const isAdmin = username === "anishkn" || displayName === "Anish Neupane";
+
+    // PRESERVED LOGIC: Top ranks
     if (rank === 1) {
       return "fucking crazy 🔥";
     }
@@ -21,11 +30,19 @@ export function Leaderboard({ title, entries, loading }: LeaderboardProps) {
       return "hacker hai bhai hacker 💻";
     }
 
-    // Bottom performers get roasted
+    if (rank === 3) {
+      return "solid grind bhai 💪";
+    }
+
+    // SPECIAL: Admin in last place gets special message
+    if (isAdmin && rank === totalEntries) {
+      return "Aaja dai le rest garchha";
+    }
+
+    // PRESERVED LOGIC: Bottom performers get roasted
     const bottomPosition = totalEntries - rank + 1;
     
     if (bottomPosition === 1) {
-      // Absolute last
       return "laptop on toh hai? 💀";
     }
     
@@ -42,12 +59,54 @@ export function Leaderboard({ title, entries, loading }: LeaderboardProps) {
     }
     
     if (bottomPosition === 5) {
-      return "at least you opened VSCode 😅";
+      return "at least you opened VSCode 😮‍💨";
     }
 
-    // Middle ranks - neutral/encouraging
-    if (rank === 3) {
-      return "solid grind bhai 💪";
+    // NEW: Conditional Logic - High daily but low weekly (came out of hiding)
+    if (dailyHours > 3 && hours < 5) {
+      return "aaja ta ghaam laagechha ta! ☀️";
+    }
+
+    // NEW: Nepali roast for low rank but on leaderboard
+    if (rank > totalEntries * 0.7 && hours > 0) {
+      return "timi ni coder banne hora? 🤨";
+    }
+
+    // NEW: Random messages based on time ranges
+    if (hours === 0 || totalSeconds < 60) {
+      return randomMessage([
+        "Laptop ta khol bhai 💀",
+        "Aaj ghumna jane ho?",
+        "Chiya churot break? ☕"
+      ]);
+    }
+
+    if (hours < 1) {
+      return randomMessage([
+        "Hello World mai atkio?",
+        "Warmup chalira cha?"
+      ]);
+    }
+
+    if (hours >= 1 && hours < 3) {
+      return randomMessage([
+        "Thikthak kaam 🔥",
+        "Sahi ho, carry on"
+      ]);
+    }
+
+    if (hours >= 3 && hours < 6) {
+      return randomMessage([
+        "Khatra! 🚀",
+        "Hacker hai bhai hacker"
+      ]);
+    }
+
+    if (hours >= 6) {
+      return randomMessage([
+        "Aakha futla hai bhai 👓",
+        "Dev Manush (God Mode) 🙏"
+      ]);
     }
     
     return "keep grinding 🚀";
@@ -80,16 +139,27 @@ export function Leaderboard({ title, entries, loading }: LeaderboardProps) {
         <p className="text-gray-500 dark:text-gray-400 text-center py-6 sm:py-8 text-sm sm:text-base">No data available</p>
       ) : (
         <div className="space-y-1.5 sm:space-y-2">
-          {entries.map((entry) => (
+          {entries.map((entry) => {
+            const isBottomTwo = entry.rank > entries.length - 2;
+            const isZeroTime = entry.total_seconds === 0;
+            const isGhosted = isBottomTwo || isZeroTime;
+            const isAdmin = entry.username === "anishkn" || entry.display_name === "Anish Neupane";
+            
+            return (
             <div
               key={entry.user_id}
-              className="flex items-center space-x-2 sm:space-x-3 p-2 sm:p-3 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              className={`
+                flex items-center space-x-2 sm:space-x-3 p-2 sm:p-3 
+                hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors
+                ${isGhosted ? 'opacity-60 grayscale' : ''}
+                glitch-random
+              `}
             >
               {/* Rank badge */}
               <div className={`
                 flex-shrink-0 w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center font-bold text-xs sm:text-sm
-                ${entry.rank === 1 ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300' : ''}
-                ${entry.rank === 2 ? 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300' : ''}
+                ${entry.rank === 1 ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300 glitch-rgb' : ''}
+                ${entry.rank === 2 ? 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 glitch-rgb' : ''}
                 ${entry.rank === 3 ? 'bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300' : ''}
                 ${entry.rank > 3 ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400' : ''}
               `}>
@@ -111,14 +181,19 @@ export function Leaderboard({ title, entries, loading }: LeaderboardProps) {
 
               {/* User info */}
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm sm:text-base text-gray-900 dark:text-white truncate">
-                  {entry.display_name || entry.username}
+                <p className="font-medium text-sm sm:text-base text-gray-900 dark:text-white truncate flex items-center gap-1.5">
+                  <span>{entry.display_name || entry.username}</span>
+                  {isAdmin && (
+                    <span className="text-[10px] font-mono bg-green-500/10 text-green-600 dark:text-green-400 px-1.5 py-0.5 rounded border border-green-500/20">
+                      [ROOT@WAKALEAD ~]#
+                    </span>
+                  )}
                 </p>
                 <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 truncate">
                   @{entry.username}
                 </p>
                 <p className="text-xs font-medium text-purple-600 dark:text-purple-400 mt-0.5 line-clamp-2 leading-tight">
-                  {getSubtitle(entry.rank, entries.length)}
+                  {getStatusMessage(entry.rank, entries.length, entry.total_seconds, entry.username, entry.display_name)}
                 </p>
               </div>
 
@@ -129,7 +204,8 @@ export function Leaderboard({ title, entries, loading }: LeaderboardProps) {
                 </p>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
