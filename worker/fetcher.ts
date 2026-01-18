@@ -119,3 +119,48 @@ export async function fetchTodayDataForUser(
     throw error;
   }
 }
+
+/**
+ * Fetch entire week's data for a user (last 7 days)
+ * Fetches all days that haven't been fetched yet
+ */
+export async function fetchWeekDataForUser(
+  env: Env,
+  userId: number,
+  accessToken: string
+): Promise<void> {
+  // Generate last 7 days dates
+  const dates: string[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    dates.push(date.toISOString().split('T')[0]);
+  }
+
+  try {
+    // Fetch entire week in one API call (more efficient)
+    const startDate = dates[0];
+    const endDate = dates[dates.length - 1];
+    
+    console.log(`Fetching week data for user ${userId} from ${startDate} to ${endDate}`);
+    const summaries = await fetchWakaTimeSummaries(accessToken, startDate, endDate);
+    
+    // Store each day's data
+    if (summaries.data && Array.isArray(summaries.data)) {
+      for (const daySummary of summaries.data) {
+        const date = daySummary.range.date;
+        const totalSeconds = daySummary.grand_total?.total_seconds || 0;
+        
+        // Store in database (will update if already exists)
+        await storeDailyStats(env, userId, date, totalSeconds);
+      }
+      
+      await logFetch(env, userId, 'weekly', endDate, 'success');
+      console.log(`Successfully fetched week data for user ${userId}`);
+    }
+  } catch (error: any) {
+    console.error('Error fetching week data:', error);
+    await logFetch(env, userId, 'weekly', dates[dates.length - 1], 'error', error.message);
+    throw error;
+  }
+}

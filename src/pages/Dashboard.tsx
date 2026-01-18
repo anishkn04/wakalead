@@ -192,7 +192,7 @@ export function Dashboard() {
                     : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50'
                 }`}
               >
-                🏆 Today's Leaderboard
+                Today's Leaderboard
               </button>
               <button
                 onClick={() => setActiveTab('week')}
@@ -202,7 +202,7 @@ export function Dashboard() {
                     : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50'
                 }`}
               >
-                📊 This Week's Leaderboard
+                This Week's Leaderboard
               </button>
             </div>
             

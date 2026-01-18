@@ -2,7 +2,7 @@ import { Env } from './types';
 import { exchangeCodeForToken, fetchWakaTimeUser } from './wakatime';
 import { createOrUpdateUser, getLeaderboard, getWeeklyData, getAllUsers, deleteUser } from './database';
 import { createSession, verifySession, deleteSession, extractSessionId } from './session';
-import { fetchDataForAllUsers, fetchTodayDataForUser } from './fetcher';
+import { fetchDataForAllUsers, fetchTodayDataForUser, fetchWeekDataForUser } from './fetcher';
 
 /**
  * Main Cloudflare Worker
@@ -158,23 +158,17 @@ export default {
         // Try to get authenticated user (optional)
         const user = await verifySession(env, request).catch(() => null);
         
-        // If user is authenticated, fetch their latest data
+        // If user is authenticated, fetch their latest week data
         if (user) {
           try {
-            await fetchTodayDataForUser(env, user.id, user.access_token);
+            await fetchWeekDataForUser(env, user.id, user.access_token);
           } catch (error) {
             console.error('Error fetching user data:', error);
           }
         }
 
         const today = new Date().toISOString().split('T')[0];
-        const now = new Date();
-        const dayOfWeek = now.getDay();
-        const startOfWeek = new Date(now);
-        startOfWeek.setDate(now.getDate() - dayOfWeek);
-        const start = startOfWeek.toISOString().split('T')[0];
-        const end = today;
-
+        
         // Generate last 7 days dates
         const dates: string[] = [];
         for (let i = 6; i >= 0; i--) {
@@ -182,11 +176,13 @@ export default {
           date.setDate(date.getDate() - i);
           dates.push(date.toISOString().split('T')[0]);
         }
+        const weekStart = dates[0]; // 7 days ago
+        const weekEnd = dates[dates.length - 1]; // today
 
         // Fetch all data in parallel
         const [todayLeaderboard, weekLeaderboard, weeklyData] = await Promise.all([
           getLeaderboard(env, today, today),
-          getLeaderboard(env, start, end),
+          getLeaderboard(env, weekStart, weekEnd),
           getWeeklyData(env, dates),
         ]);
 
@@ -227,18 +223,19 @@ export default {
       }
 
       if (path === '/api/leaderboard/week') {
-        // This week's leaderboard - fetch fresh data for current user
-        const now = new Date();
-        const dayOfWeek = now.getDay();
-        const startOfWeek = new Date(now);
-        startOfWeek.setDate(now.getDate() - dayOfWeek);
+        // Last 7 days leaderboard - fetch fresh data for current user
+        const dates: string[] = [];
+        for (let i = 6; i >= 0; i--) {
+          const date = new Date();
+          date.setDate(date.getDate() - i);
+          dates.push(date.toISOString().split('T')[0]);
+        }
+        const start = dates[0];
+        const end = dates[dates.length - 1];
         
-        const start = startOfWeek.toISOString().split('T')[0];
-        const end = now.toISOString().split('T')[0];
-        
-        // Fetch latest data for current user
+        // Fetch latest week data for current user
         try {
-          await fetchTodayDataForUser(env, user.id, user.access_token);
+          await fetchWeekDataForUser(env, user.id, user.access_token);
         } catch (error) {
           console.error('Error fetching weekly data:', error);
         }
