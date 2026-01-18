@@ -1,0 +1,91 @@
+import { LeaderboardEntry, formatDuration } from '../api';
+
+interface LeaderboardProps {
+  title: string;
+  entries: LeaderboardEntry[];
+  loading?: boolean;
+}
+
+/**
+ * Leaderboard component - displays ranked users by coding time
+ */
+export function Leaderboard({ title, entries, loading }: LeaderboardProps) {
+  if (loading) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+        <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">{title}</h2>
+        <div className="space-y-3">
+          {[1, 2, 3, 4, 5].map(i => (
+            <div key={i} className="animate-pulse flex items-center space-x-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+              <div className="w-8 h-8 bg-gray-200 dark:bg-gray-600 rounded-full" />
+              <div className="flex-1">
+                <div className="h-4 bg-gray-200 dark:bg-gray-600 rounded w-1/3 mb-2" />
+                <div className="h-3 bg-gray-200 dark:bg-gray-600 rounded w-1/4" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+      <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">{title}</h2>
+      
+      {entries.length === 0 ? (
+        <p className="text-gray-500 dark:text-gray-400 text-center py-8">No data available</p>
+      ) : (
+        <div className="space-y-2">
+          {entries.map((entry) => (
+            <div
+              key={entry.user_id}
+              className="flex items-center space-x-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            >
+              {/* Rank badge */}
+              <div className={`
+                flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm
+                ${entry.rank === 1 ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300' : ''}
+                ${entry.rank === 2 ? 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300' : ''}
+                ${entry.rank === 3 ? 'bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300' : ''}
+                ${entry.rank > 3 ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400' : ''}
+              `}>
+                {entry.rank}
+              </div>
+
+              {/* User avatar */}
+              {entry.photo_url ? (
+                <img
+                  src={entry.photo_url}
+                  alt={entry.username}
+                  className="w-10 h-10 rounded-full"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold">
+                  {entry.username.charAt(0).toUpperCase()}
+                </div>
+              )}
+
+              {/* User info */}
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-gray-900 dark:text-white truncate">
+                  {entry.display_name || entry.username}
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                  @{entry.username}
+                </p>
+              </div>
+
+              {/* Time */}
+              <div className="text-right">
+                <p className="font-semibold text-gray-900 dark:text-white">
+                  {formatDuration(entry.total_seconds)}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

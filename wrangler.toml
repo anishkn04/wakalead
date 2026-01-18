@@ -1,0 +1,26 @@
+name = "wakalead-api"
+main = "worker/index.ts"
+compatibility_date = "2024-01-01"
+
+# D1 Database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "wakalead"
+database_id = "YOUR_DATABASE_ID_HERE" 
+
+# KV namespace for session storage
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "YOUR_KV_NAMESPACE_ID_HERE"
+
+# Environment variables (set these as secrets via wrangler)
+[vars]
+WAKATIME_CLIENT_ID = ""
+WAKATIME_REDIRECT_URI = ""
+FRONTEND_URL = ""
+SESSION_SECRET = ""
+ADMIN_WAKATIME_ID = "your_wakatime_id_here"
+
+# Scheduled cron job to fetch WakaTime data daily
+[triggers]
+crons = ["0 2 * * *"] # Run at 2 AM UTC daily

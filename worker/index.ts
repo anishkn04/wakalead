@@ -1,0 +1,259 @@
+import { Env } from './types';
+import { exchangeCodeForToken, fetchWakaTimeUser } from './wakatime';
+import { createOrUpdateUser, getLeaderboard, getWeeklyData, getAllUsers, deleteUser } from './database';
+import { createSession, verifySession, deleteSession, extractSessionId } from './session';
+import { fetchDataForAllUsers, fetchTodayDataForUser } from './fetcher';
+
+/**
+ * Main Cloudflare Worker
+ * Handles all API routes and scheduled tasks
+ */
+
+// CORS headers for frontend
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+function jsonResponse(data: any, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      ...corsHeaders,
+    },
+  });
+}
+
+function errorResponse(message: string, status = 400) {
+  return jsonResponse({ error: message }, status);
+}
+
+export default {
+  /**
+   * Handle HTTP requests
+   */
+  async fetch(request: Request, env: Env): Promise<Response> {
+    // Handle CORS preflight
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { headers: corsHeaders });
+    }
+
+    const url = new URL(request.url);
+    const path = url.pathname;
+
+    try {
+      // Public routes
+      if (path === '/api/auth/login') {
+        // Redirect to WakaTime OAuth
+        const authUrl = new URL('https://wakatime.com/oauth/authorize');
+        authUrl.searchParams.set('client_id', env.WAKATIME_CLIENT_ID);
+        authUrl.searchParams.set('redirect_uri', env.WAKATIME_REDIRECT_URI);
+        authUrl.searchParams.set('response_type', 'code');
+        authUrl.searchParams.set('scope', 'email,read_stats,read_logged_time');
+
+        return Response.redirect(authUrl.toString(), 302);
+      }
+
+      if (path === '/api/auth/callback') {
+        // OAuth callback - exchange code for token
+        const code = url.searchParams.get('code');
+        const error = url.searchParams.get('error');
+        
+        // Check for OAuth errors from WakaTime
+        if (error) {
+          const redirectUrl = new URL(env.FRONTEND_URL || 'https://wakalead.pages.dev');
+          redirectUrl.pathname = '/login';
+          redirectUrl.searchParams.set('error', error);
+          return Response.redirect(redirectUrl.toString(), 302);
+        }
+        
+        if (!code) {
+          const redirectUrl = new URL(env.FRONTEND_URL || 'https://wakalead.pages.dev');
+          redirectUrl.pathname = '/login';
+          redirectUrl.searchParams.set('error', 'Missing authorization code');
+          return Response.redirect(redirectUrl.toString(), 302);
+        }
+
+        try {
+          // Exchange code for tokens
+          const tokenData = await exchangeCodeForToken(env, code);
+          
+          // Fetch user profile
+          const wakaUser = await fetchWakaTimeUser(tokenData.access_token);
+
+          // Create or update user in database
+          const user = await createOrUpdateUser(env, {
+            wakatime_id: wakaUser.id,
+            username: wakaUser.username,
+            display_name: wakaUser.display_name,
+            email: wakaUser.email,
+            access_token: tokenData.access_token,
+            refresh_token: tokenData.refresh_token,
+            token_expires_at: tokenData.expires_in ? Date.now() + (parseInt(tokenData.expires_in) * 1000) : null,
+            photo_url: wakaUser.photo,
+          });
+
+          // Create session
+          const sessionId = await createSession(env, user.id, user.wakatime_id);
+
+          // Fetch today's data if not already fetched
+          try {
+            await fetchTodayDataForUser(env, user.id, user.access_token);
+          } catch (error) {
+            console.error('Error fetching initial data:', error);
+          }
+
+          // Redirect to frontend with session
+          const redirectUrl = new URL(env.FRONTEND_URL || env.WAKATIME_REDIRECT_URI);
+          redirectUrl.pathname = '/';
+          redirectUrl.searchParams.set('session', sessionId);
+          
+          return Response.redirect(redirectUrl.toString(), 302);
+        } catch (error: any) {
+          console.error('OAuth callback error:', error);
+          // Redirect to frontend with error
+          const redirectUrl = new URL(env.FRONTEND_URL || 'https://wakalead.pages.dev');
+          redirectUrl.pathname = '/login';
+          redirectUrl.searchParams.set('error', error.message || 'Authentication failed');
+          return Response.redirect(redirectUrl.toString(), 302);
+        }
+      }
+
+      if (path === '/api/auth/logout') {
+        const sessionId = extractSessionId(request);
+        if (sessionId) {
+          await deleteSession(env, sessionId);
+        }
+        return jsonResponse({ success: true });
+      }
+
+      if (path === '/api/auth/me') {
+        // Get current user
+        const user = await verifySession(env, request);
+        if (!user) {
+          return errorResponse('Not authenticated', 401);
+        }
+
+        return jsonResponse({
+          id: user.id,
+          wakatime_id: user.wakatime_id,
+          username: user.username,
+          display_name: user.display_name,
+          photo_url: user.photo_url,
+          is_admin: user.is_admin === 1,
+        });
+      }
+
+      // Protected routes - require authentication
+      const user = await verifySession(env, request);
+      if (!user) {
+        return errorResponse('Not authenticated', 401);
+      }
+
+      if (path === '/api/leaderboard/today') {
+        // Today's leaderboard
+        const today = new Date().toISOString().split('T')[0];
+        const leaderboard = await getLeaderboard(env, today, today);
+        return jsonResponse(leaderboard);
+      }
+
+      if (path === '/api/leaderboard/week') {
+        // This week's leaderboard
+        const now = new Date();
+        const dayOfWeek = now.getDay();
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - dayOfWeek);
+        
+        const start = startOfWeek.toISOString().split('T')[0];
+        const end = now.toISOString().split('T')[0];
+        
+        const leaderboard = await getLeaderboard(env, start, end);
+        return jsonResponse(leaderboard);
+      }
+
+      if (path === '/api/weekly-data') {
+        // Last 7 days data for chart
+        const dates: string[] = [];
+        for (let i = 6; i >= 0; i--) {
+          const date = new Date();
+          date.setDate(date.getDate() - i);
+          dates.push(date.toISOString().split('T')[0]);
+        }
+
+        const weeklyData = await getWeeklyData(env, dates);
+        return jsonResponse({ dates, users: weeklyData });
+      }
+
+      // Admin routes
+      if (path.startsWith('/api/admin/')) {
+        if (user.is_admin !== 1) {
+          return errorResponse('Forbidden: Admin access required', 403);
+        }
+
+        if (path === '/api/admin/users' && request.method === 'GET') {
+          const users = await getAllUsers(env);
+          return jsonResponse(users.map(u => ({
+            id: u.id,
+            wakatime_id: u.wakatime_id,
+            username: u.username,
+            display_name: u.display_name,
+            email: u.email,
+            photo_url: u.photo_url,
+            is_admin: u.is_admin === 1,
+            created_at: u.created_at,
+          })));
+        }
+
+        if (path === '/api/admin/users' && request.method === 'POST') {
+          // Add user manually (for admin)
+          const body = await request.json() as any;
+          
+          // Validate required fields
+          if (!body.wakatime_id || !body.username || !body.access_token) {
+            return errorResponse('Missing required fields', 400);
+          }
+
+          const newUser = await createOrUpdateUser(env, {
+            wakatime_id: body.wakatime_id,
+            username: body.username,
+            display_name: body.display_name,
+            email: body.email,
+            access_token: body.access_token,
+            refresh_token: body.refresh_token,
+            photo_url: body.photo_url,
+          });
+
+          return jsonResponse(newUser, 201);
+        }
+
+        if (path.match(/^\/api\/admin\/users\/\d+$/) && request.method === 'DELETE') {
+          const userId = parseInt(path.split('/').pop()!);
+          await deleteUser(env, userId);
+          return jsonResponse({ success: true });
+        }
+
+        if (path === '/api/admin/fetch-now') {
+          // Trigger manual data fetch
+          await fetchDataForAllUsers(env);
+          return jsonResponse({ success: true, message: 'Data fetch initiated' });
+        }
+      }
+
+      return errorResponse('Not found', 404);
+    } catch (error: any) {
+      console.error('Worker error:', error);
+      return errorResponse(error.message || 'Internal server error', 500);
+    }
+  },
+
+  /**
+   * Handle scheduled cron triggers
+   * Runs daily at 2 AM UTC to fetch previous day's data
+   */
+  async scheduled(event: ScheduledEvent, env: Env): Promise<void> {
+    console.log('Cron triggered:', new Date().toISOString());
+    await fetchDataForAllUsers(env);
+  },
+};
