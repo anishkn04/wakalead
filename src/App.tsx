@@ -1,9 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, lazy, Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from './ThemeContext';
-import { Dashboard } from './pages/Dashboard';
-import { Login } from './pages/Login';
 import { setSession } from './api';
+
+// Lazy load pages for better initial load time
+const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const Login = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
 
 /**
  * Main App component
@@ -35,10 +37,19 @@ function App() {
 
   return (
     <ThemeProvider>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/" element={<Dashboard />} />
-      </Routes>
+      <Suspense fallback={
+        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+          <div className="text-center">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+            <p className="text-gray-600 dark:text-gray-400">Loading...</p>
+          </div>
+        </div>
+      }>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/" element={<Dashboard />} />
+        </Routes>
+      </Suspense>
     </ThemeProvider>
   );
 }

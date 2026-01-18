@@ -6,5 +6,15 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'chart-vendor': ['chart.js', 'react-chartjs-2'],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 1000,
+    minify: 'esbuild',
   },
 });

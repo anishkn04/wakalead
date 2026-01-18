@@ -13,12 +13,14 @@ CREATE TABLE IF NOT EXISTS users (
     token_expires_at INTEGER,
     photo_url TEXT,
     is_admin BOOLEAN DEFAULT 0,
+    is_banned BOOLEAN DEFAULT 0,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
 );
 
 CREATE INDEX idx_users_wakatime_id ON users(wakatime_id);
 CREATE INDEX idx_users_is_admin ON users(is_admin);
+CREATE INDEX idx_users_is_banned ON users(is_banned);
 
 -- Daily stats table - stores daily coding time per user
 CREATE TABLE IF NOT EXISTS daily_stats (

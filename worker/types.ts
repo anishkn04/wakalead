@@ -8,6 +8,7 @@ export interface Env {
   FRONTEND_URL: string;
   SESSION_SECRET: string;
   ADMIN_WAKATIME_ID: string;
+  ctx?: ExecutionContext;
 }
 
 export interface User {
@@ -21,6 +22,7 @@ export interface User {
   token_expires_at: number | null;
   photo_url: string | null;
   is_admin: boolean;
+  is_banned: boolean;
   created_at: number;
   updated_at: number;
 }

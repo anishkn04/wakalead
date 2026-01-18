@@ -1,6 +1,6 @@
 import { Env } from './types';
 import { exchangeCodeForToken, fetchWakaTimeUser } from './wakatime';
-import { createOrUpdateUser, getLeaderboard, getWeeklyData, getAllUsers, deleteUser } from './database';
+import { createOrUpdateUser, getLeaderboard, getWeeklyData, getAllUsers, deleteUser, banUser, unbanUser, getUserById } from './database';
 import { createSession, verifySession, deleteSession, extractSessionId } from './session';
 import { fetchDataForAllUsers, fetchTodayDataForUser, fetchWeekDataForUser } from './fetcher';
 
@@ -41,7 +41,10 @@ export default {
   /**
    * Handle HTTP requests
    */
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    // Attach context to env for background tasks
+    env.ctx = ctx;
+    
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: corsHeaders });
@@ -102,6 +105,14 @@ export default {
             photo_url: wakaUser.photo,
           });
 
+          // Check if user is banned
+          if (user.is_banned) {
+            const redirectUrl = new URL(env.FRONTEND_URL || 'https://wakalead.pages.dev');
+            redirectUrl.pathname = '/login';
+            redirectUrl.searchParams.set('error', 'Your account has been restricted by an administrator');
+            return Response.redirect(redirectUrl.toString(), 302);
+          }
+
           // Create session
           const sessionId = await createSession(env, user.id, user.wakatime_id);
 
@@ -136,6 +147,24 @@ export default {
         return jsonResponse({ success: true });
       }
 
+      if (path === '/api/auth/delete-account' && request.method === 'DELETE') {
+        const user = await verifySession(env, request);
+        if (!user) {
+          return errorResponse('Not authenticated', 401);
+        }
+
+        // Delete the user's account
+        await deleteUser(env, user.id);
+        
+        // Delete session
+        const sessionId = extractSessionId(request);
+        if (sessionId) {
+          await deleteSession(env, sessionId);
+        }
+
+        return jsonResponse({ success: true, message: 'Account deleted' });
+      }
+
       if (path === '/api/auth/me') {
         // Get current user
         const user = await verifySession(env, request);
@@ -158,13 +187,14 @@ export default {
         // Try to get authenticated user (optional)
         const user = await verifySession(env, request).catch(() => null);
         
-        // If user is authenticated, fetch their latest week data
+        // If user is authenticated, trigger background fetch (don't wait for it)
         if (user) {
-          try {
-            await fetchWeekDataForUser(env, user.id, user.access_token);
-          } catch (error) {
-            console.error('Error fetching user data:', error);
-          }
+          // Use waitUntil to fetch data in background without blocking response
+          // This allows the dashboard to load quickly while data updates asynchronously
+          env.ctx?.waitUntil(
+            fetchWeekDataForUser(env, user.id, user.access_token)
+              .catch(error => console.error('Background fetch error:', error))
+          );
         }
 
         const today = new Date().toISOString().split('T')[0];
@@ -310,6 +340,18 @@ export default {
           const userId = parseInt(path.split('/').pop()!);
           await deleteUser(env, userId);
           return jsonResponse({ success: true });
+        }
+
+        if (path.match(/^\/api\/admin\/users\/\d+\/ban$/) && request.method === 'POST') {
+          const userId = parseInt(path.split('/')[4]);
+          await banUser(env, userId);
+          return jsonResponse({ success: true, message: 'User banned' });
+        }
+
+        if (path.match(/^\/api\/admin\/users\/\d+\/unban$/) && request.method === 'POST') {
+          const userId = parseInt(path.split('/')[4]);
+          await unbanUser(env, userId);
+          return jsonResponse({ success: true, message: 'User unbanned' });
         }
 
         if (path === '/api/admin/fetch-now') {

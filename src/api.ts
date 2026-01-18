@@ -9,6 +9,7 @@ export interface User {
   display_name: string | null;
   photo_url: string | null;
   is_admin: boolean;
+  is_banned: boolean;
 }
 
 export interface LeaderboardEntry {
@@ -84,6 +85,11 @@ class ApiClient {
     clearSession();
   }
 
+  async deleteSelf(): Promise<void> {
+    await this.request('/auth/delete-account', { method: 'DELETE' });
+    clearSession();
+  }
+
   async getTodayLeaderboard(): Promise<LeaderboardEntry[]> {
     return this.request<LeaderboardEntry[]>('/leaderboard/today');
   }
@@ -112,6 +118,14 @@ class ApiClient {
 
   async deleteUser(userId: number): Promise<void> {
     await this.request(`/admin/users/${userId}`, { method: 'DELETE' });
+  }
+
+  async banUser(userId: number): Promise<void> {
+    await this.request(`/admin/users/${userId}/ban`, { method: 'POST' });
+  }
+
+  async unbanUser(userId: number): Promise<void> {
+    await this.request(`/admin/users/${userId}/unban`, { method: 'POST' });
   }
 
   async triggerFetch(): Promise<void> {

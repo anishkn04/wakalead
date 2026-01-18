@@ -49,12 +49,12 @@ export function WeeklyChart({ data, loading }: WeeklyChartProps) {
 
   if (loading || !data) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-        <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-3 sm:p-6">
+        <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white">
           Weekly Performance
         </h2>
         <div className="animate-pulse">
-          <div className="h-64 bg-gray-200 dark:bg-gray-700 rounded" />
+          <div className="h-48 sm:h-64 bg-gray-200 dark:bg-gray-700 rounded" />
         </div>
       </div>
     );
@@ -104,7 +104,10 @@ export function WeeklyChart({ data, loading }: WeeklyChartProps) {
             ? 'rgb(229, 231, 235)' 
             : 'rgb(17, 24, 39)',
           usePointStyle: true,
-          padding: 15,
+          padding: 10,
+          font: {
+            size: window.innerWidth < 640 ? 10 : 12,
+          },
         },
       },
       tooltip: {
@@ -114,6 +117,19 @@ export function WeeklyChart({ data, loading }: WeeklyChartProps) {
             const value = context.parsed.y?.toFixed(1) ?? '0.0';
             return `${label}: ${value}h`;
           },
+          beforeBody: (tooltipItems) => {
+            // Sort tooltip items by value in descending order
+            tooltipItems.sort((a, b) => {
+              const aValue = a.parsed.y ?? 0;
+              const bValue = b.parsed.y ?? 0;
+              return bValue - aValue;
+            });
+            return [];
+          },
+        },
+        itemSort: (a, b) => {
+          // Sort by value descending (highest first)
+          return (b.parsed.y ?? 0) - (a.parsed.y ?? 0);
         },
       },
     },
@@ -125,6 +141,9 @@ export function WeeklyChart({ data, loading }: WeeklyChartProps) {
           color: document.documentElement.classList.contains('dark')
             ? 'rgb(156, 163, 175)'
             : 'rgb(75, 85, 99)',
+          font: {
+            size: window.innerWidth < 640 ? 9 : 11,
+          },
         },
         grid: {
           color: document.documentElement.classList.contains('dark')
@@ -137,6 +156,11 @@ export function WeeklyChart({ data, loading }: WeeklyChartProps) {
           color: document.documentElement.classList.contains('dark')
             ? 'rgb(156, 163, 175)'
             : 'rgb(75, 85, 99)',
+          font: {
+            size: window.innerWidth < 640 ? 9 : 11,
+          },
+          maxRotation: window.innerWidth < 640 ? 45 : 0,
+          minRotation: window.innerWidth < 640 ? 45 : 0,
         },
         grid: {
           display: false,
@@ -146,11 +170,11 @@ export function WeeklyChart({ data, loading }: WeeklyChartProps) {
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-      <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-3 sm:p-6">
+      <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white">
         Weekly Performance (Last 7 Days)
       </h2>
-      <div className="h-80">
+      <div className="h-64 sm:h-80">
         <Line ref={chartRef} data={chartData} options={options} />
       </div>
     </div>

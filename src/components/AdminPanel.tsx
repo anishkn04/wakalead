@@ -46,6 +46,30 @@ export function AdminPanel({ currentUser }: AdminPanelProps) {
     }
   };
 
+  const handleBan = async (userId: number, username: string) => {
+    if (!confirm(`Are you sure you want to ban user ${username}? They won't be able to log in.`)) {
+      return;
+    }
+
+    try {
+      await api.banUser(userId);
+      setMessage(`User ${username} has been banned`);
+      await loadUsers();
+    } catch (error: any) {
+      setMessage('Error banning user: ' + error.message);
+    }
+  };
+
+  const handleUnban = async (userId: number, username: string) => {
+    try {
+      await api.unbanUser(userId);
+      setMessage(`User ${username} has been unbanned`);
+      await loadUsers();
+    } catch (error: any) {
+      setMessage('Error unbanning user: ' + error.message);
+    }
+  };
+
   const handleTriggerFetch = async () => {
     if (!confirm('This will fetch data for all users. Continue?')) {
       return;
@@ -141,6 +165,11 @@ export function AdminPanel({ currentUser }: AdminPanelProps) {
                         Admin
                       </span>
                     )}
+                    {user.is_banned && (
+                      <span className="ml-2 px-2 py-0.5 text-xs bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 rounded">
+                        Banned
+                      </span>
+                    )}
                   </p>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
                     @{user.username} • ID: {user.wakatime_id}
@@ -148,13 +177,33 @@ export function AdminPanel({ currentUser }: AdminPanelProps) {
                 </div>
               </div>
 
-              <button
-                onClick={() => handleDelete(user.id, user.username)}
-                disabled={user.is_admin}
-                className="px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
-              >
-                Delete
-              </button>
+              <div className="flex items-center space-x-2">
+                {user.is_banned ? (
+                  <button
+                    onClick={() => handleUnban(user.id, user.username)}
+                    disabled={user.is_admin}
+                    className="px-3 py-1.5 text-sm text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+                  >
+                    Unban
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleBan(user.id, user.username)}
+                    disabled={user.is_admin}
+                    className="px-3 py-1.5 text-sm text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-900/20 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+                  >
+                    Ban
+                  </button>
+                )}
+
+                <button
+                  onClick={() => handleDelete(user.id, user.username)}
+                  disabled={user.is_admin}
+                  className="px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
             </div>
           ))}
         </div>

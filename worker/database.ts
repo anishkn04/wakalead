@@ -18,7 +18,7 @@ export async function createOrUpdateUser(
   }
 ): Promise<User> {
   const now = Date.now();
-  const isAdmin = userData.wakatime_id === env.ADMIN_WAKATIME_ID;
+  const isAdmin = userData.username === env.ADMIN_WAKATIME_ID;
 
   // Check if user exists
   const existing = await env.DB.prepare(
@@ -219,3 +219,26 @@ export async function getAllUsers(env: Env): Promise<User[]> {
 export async function deleteUser(env: Env, userId: number): Promise<void> {
   await env.DB.prepare('DELETE FROM users WHERE id = ?').bind(userId).run();
 }
+
+/**
+ * Ban user (admin only)
+ */
+export async function banUser(env: Env, userId: number): Promise<void> {
+  await env.DB.prepare('UPDATE users SET is_banned = 1 WHERE id = ?').bind(userId).run();
+}
+
+/**
+ * Unban user (admin only)
+ */
+export async function unbanUser(env: Env, userId: number): Promise<void> {
+  await env.DB.prepare('UPDATE users SET is_banned = 0 WHERE id = ?').bind(userId).run();
+}
+
+/**
+ * Get user by ID
+ */
+export async function getUserById(env: Env, userId: number): Promise<User | null> {
+  const user = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first<User>();
+  return user || null;
+}
+
