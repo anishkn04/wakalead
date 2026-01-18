@@ -2,6 +2,9 @@ name = "wakalead-api"
 main = "worker/index.ts"
 compatibility_date = "2024-01-01"
 
+# Pages configuration - tells Cloudflare this is a Pages project
+pages_build_output_dir = "dist"
+
 # D1 Database binding
 [[d1_databases]]
 binding = "DB"
