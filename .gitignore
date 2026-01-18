@@ -6,3 +6,4 @@ dist
 .env.production
 *.log
 set-secrets.sh
+wrangler.real.toml

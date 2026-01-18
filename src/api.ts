@@ -96,6 +96,15 @@ class ApiClient {
     return this.request<WeeklyData>('/weekly-data');
   }
 
+  async getDashboard(): Promise<{
+    user: User | null;
+    today: LeaderboardEntry[];
+    week: LeaderboardEntry[];
+    weeklyData: WeeklyData;
+  }> {
+    return this.request('/dashboard');
+  }
+
   // Admin endpoints
   async getUsers(): Promise<User[]> {
     return this.request<User[]>('/admin/users');

@@ -16,13 +16,20 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
-function jsonResponse(data: any, status = 200) {
+function jsonResponse(data: any, status = 200, cacheSeconds = 0) {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...corsHeaders,
+  };
+  
+  if (cacheSeconds > 0) {
+    // Cache for specified seconds with stale-while-revalidate
+    headers['Cache-Control'] = `public, max-age=${cacheSeconds}, stale-while-revalidate=${cacheSeconds * 2}`;
+  }
+  
   return new Response(JSON.stringify(data), {
     status,
-    headers: {
-      'Content-Type': 'application/json',
-      ...corsHeaders,
-    },
+    headers,
   });
 }
 
@@ -146,6 +153,58 @@ export default {
         });
       }
 
+      // Dashboard endpoint - public, optional authentication
+      if (path === '/api/dashboard') {
+        // Try to get authenticated user (optional)
+        const user = await verifySession(env, request).catch(() => null);
+        
+        // If user is authenticated, fetch their latest data
+        if (user) {
+          try {
+            await fetchTodayDataForUser(env, user.id, user.access_token);
+          } catch (error) {
+            console.error('Error fetching user data:', error);
+          }
+        }
+
+        const today = new Date().toISOString().split('T')[0];
+        const now = new Date();
+        const dayOfWeek = now.getDay();
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - dayOfWeek);
+        const start = startOfWeek.toISOString().split('T')[0];
+        const end = today;
+
+        // Generate last 7 days dates
+        const dates: string[] = [];
+        for (let i = 6; i >= 0; i--) {
+          const date = new Date();
+          date.setDate(date.getDate() - i);
+          dates.push(date.toISOString().split('T')[0]);
+        }
+
+        // Fetch all data in parallel
+        const [todayLeaderboard, weekLeaderboard, weeklyData] = await Promise.all([
+          getLeaderboard(env, today, today),
+          getLeaderboard(env, start, end),
+          getWeeklyData(env, dates),
+        ]);
+
+        return jsonResponse({
+          user: user ? {
+            id: user.id,
+            wakatime_id: user.wakatime_id,
+            username: user.username,
+            display_name: user.display_name,
+            photo_url: user.photo_url,
+            is_admin: user.is_admin === 1,
+          } : null,
+          today: todayLeaderboard,
+          week: weekLeaderboard,
+          weeklyData: { dates, users: weeklyData },
+        }, 200, 30); // Cache for 30 seconds
+      }
+
       // Protected routes - require authentication
       const user = await verifySession(env, request);
       if (!user) {
@@ -153,14 +212,22 @@ export default {
       }
 
       if (path === '/api/leaderboard/today') {
-        // Today's leaderboard
+        // Today's leaderboard - fetch fresh data for current user
         const today = new Date().toISOString().split('T')[0];
+        
+        // Fetch latest data for current user
+        try {
+          await fetchTodayDataForUser(env, user.id, user.access_token);
+        } catch (error) {
+          console.error('Error fetching today data:', error);
+        }
+        
         const leaderboard = await getLeaderboard(env, today, today);
         return jsonResponse(leaderboard);
       }
 
       if (path === '/api/leaderboard/week') {
-        // This week's leaderboard
+        // This week's leaderboard - fetch fresh data for current user
         const now = new Date();
         const dayOfWeek = now.getDay();
         const startOfWeek = new Date(now);
@@ -169,17 +236,31 @@ export default {
         const start = startOfWeek.toISOString().split('T')[0];
         const end = now.toISOString().split('T')[0];
         
+        // Fetch latest data for current user
+        try {
+          await fetchTodayDataForUser(env, user.id, user.access_token);
+        } catch (error) {
+          console.error('Error fetching weekly data:', error);
+        }
+        
         const leaderboard = await getLeaderboard(env, start, end);
         return jsonResponse(leaderboard);
       }
 
       if (path === '/api/weekly-data') {
-        // Last 7 days data for chart
+        // Last 7 days data for chart - fetch fresh data for current user
         const dates: string[] = [];
         for (let i = 6; i >= 0; i--) {
           const date = new Date();
           date.setDate(date.getDate() - i);
           dates.push(date.toISOString().split('T')[0]);
+        }
+
+        // Fetch latest data for current user
+        try {
+          await fetchTodayDataForUser(env, user.id, user.access_token);
+        } catch (error) {
+          console.error('Error fetching weekly chart data:', error);
         }
 
         const weeklyData = await getWeeklyData(env, dates);
@@ -246,14 +327,5 @@ export default {
       console.error('Worker error:', error);
       return errorResponse(error.message || 'Internal server error', 500);
     }
-  },
-
-  /**
-   * Handle scheduled cron triggers
-   * Runs daily at 2 AM UTC to fetch previous day's data
-   */
-  async scheduled(event: ScheduledEvent, env: Env): Promise<void> {
-    console.log('Cron triggered:', new Date().toISOString());
-    await fetchDataForAllUsers(env);
   },
 };
