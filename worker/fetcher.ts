@@ -22,16 +22,18 @@ import {
  * - Stores in daily_stats table
  * - Logs all fetch attempts for debugging and rate limit tracking
  */
-export async function fetchDataForAllUsers(env: Env): Promise<void> {
+export async function fetchDataForAllUsers(env: Env, useToday = false): Promise<void> {
   console.log('Starting scheduled data fetch...');
 
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const dateStr = yesterday.toISOString().split('T')[0]; // YYYY-MM-DD
+  const targetDate = new Date();
+  if (!useToday) {
+    targetDate.setDate(targetDate.getDate() - 1);
+  }
+  const dateStr = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
 
   // Get all users
   const users = await getAllUsers(env);
-  console.log(`Fetching data for ${users.length} users`);
+  console.log(`Fetching data for ${users.length} users for date ${dateStr}`);
 
   // Fetch data for each user sequentially to avoid rate limits
   for (const user of users) {
@@ -121,6 +123,66 @@ export async function fetchTodayDataForUser(
 }
 
 /**
+ * Fetch today's data for all users (background task)
+ * Used when anyone accesses the dashboard to refresh everyone's data
+ * @param forceRefresh - If true, skip the wasFetchedToday check and always fetch fresh data
+ */
+export async function fetchTodayDataForAllUsers(env: Env, forceRefresh = false): Promise<void> {
+  const today = new Date().toISOString().split('T')[0];
+  const users = await getAllUsers(env);
+  
+  console.log(`Fetching today's data for ${users.length} users (forceRefresh: ${forceRefresh})`);
+
+  // Fetch data for each user
+  for (const user of users) {
+    // Skip if already fetched today (unless forceRefresh is true)
+    if (!forceRefresh && await wasFetchedToday(env, user.id, today)) {
+      continue;
+    }
+
+    try {
+      let accessToken = user.access_token;
+      
+      // Check if token needs refresh
+      if (user.token_expires_at && user.token_expires_at < Date.now()) {
+        if (user.refresh_token) {
+          const tokenData = await refreshAccessToken(env, user.refresh_token);
+          accessToken = tokenData.access_token;
+          
+          await createOrUpdateUser(env, {
+            wakatime_id: user.wakatime_id,
+            username: user.username,
+            display_name: user.display_name || undefined,
+            email: user.email || undefined,
+            access_token: tokenData.access_token,
+            refresh_token: tokenData.refresh_token,
+            token_expires_at: Date.now() + tokenData.expires_in * 1000,
+            photo_url: user.photo_url || undefined,
+          });
+        } else {
+          console.error(`Token expired for user ${user.username}`);
+          continue;
+        }
+      }
+
+      const summaries = await fetchWakaTimeSummaries(accessToken, today, today);
+      const totalSeconds = calculateTotalSeconds(summaries.data || []);
+      
+      await storeDailyStats(env, user.id, today, totalSeconds);
+      await logFetch(env, user.id, 'daily', today, 'success');
+      
+      // Small delay to avoid rate limits
+      await new Promise(resolve => setTimeout(resolve, 500));
+    } catch (error: any) {
+      console.error(`Error fetching today data for ${user.username}:`, error);
+      await logFetch(env, user.id, 'daily', today, 'error', error.message);
+    }
+  }
+  
+  console.log(`Completed fetching today's data for all users`);
+}
+
+/**
  * Fetch entire week's data for a user (last 7 days)
  * Fetches all days that haven't been fetched yet
  */
@@ -163,4 +225,79 @@ export async function fetchWeekDataForUser(
     await logFetch(env, userId, 'weekly', dates[dates.length - 1], 'error', error.message);
     throw error;
   }
+}
+
+/**
+ * Fetch week's data for all users (background task)
+ * Used when refresh button is clicked to update everyone's week data
+ */
+export async function fetchWeekDataForAllUsers(env: Env): Promise<void> {
+  const users = await getAllUsers(env);
+  
+  // Generate last 7 days dates
+  const dates: string[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    dates.push(date.toISOString().split('T')[0]);
+  }
+  const startDate = dates[0];
+  const endDate = dates[dates.length - 1];
+  
+  console.log(`Fetching week data for ${users.length} users from ${startDate} to ${endDate}`);
+
+  // Fetch data for each user
+  for (const user of users) {
+    try {
+      let accessToken = user.access_token;
+      
+      // Check if token needs refresh
+      if (user.token_expires_at && user.token_expires_at < Date.now()) {
+        if (user.refresh_token) {
+          console.log(`Refreshing token for user ${user.username}`);
+          const tokenData = await refreshAccessToken(env, user.refresh_token);
+          accessToken = tokenData.access_token;
+          
+          await createOrUpdateUser(env, {
+            wakatime_id: user.wakatime_id,
+            username: user.username,
+            display_name: user.display_name || undefined,
+            email: user.email || undefined,
+            access_token: tokenData.access_token,
+            refresh_token: tokenData.refresh_token,
+            token_expires_at: Date.now() + tokenData.expires_in * 1000,
+            photo_url: user.photo_url || undefined,
+          });
+        } else {
+          console.error(`Token expired for user ${user.username}`);
+          continue;
+        }
+      }
+
+      // Fetch entire week in one API call
+      const summaries = await fetchWakaTimeSummaries(accessToken, startDate, endDate);
+      
+      // Store each day's data
+      if (summaries.data && Array.isArray(summaries.data)) {
+        for (const daySummary of summaries.data) {
+          const date = daySummary.range.date;
+          const totalSeconds = daySummary.grand_total?.total_seconds || 0;
+          
+          // Store in database (will update if already exists)
+          await storeDailyStats(env, user.id, date, totalSeconds);
+        }
+        
+        await logFetch(env, user.id, 'weekly', endDate, 'success');
+        console.log(`Successfully fetched week data for ${user.username}`);
+      }
+      
+      // Small delay to avoid rate limits
+      await new Promise(resolve => setTimeout(resolve, 500));
+    } catch (error: any) {
+      console.error(`Error fetching week data for ${user.username}:`, error);
+      await logFetch(env, user.id, 'weekly', endDate, 'error', error.message);
+    }
+  }
+  
+  console.log(`Completed fetching week data for all users`);
 }

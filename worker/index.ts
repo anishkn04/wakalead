@@ -2,7 +2,7 @@ import { Env } from './types';
 import { exchangeCodeForToken, fetchWakaTimeUser } from './wakatime';
 import { createOrUpdateUser, getLeaderboard, getWeeklyData, getAllUsers, deleteUser, banUser, unbanUser, getUserById } from './database';
 import { createSession, verifySession, deleteSession, extractSessionId } from './session';
-import { fetchDataForAllUsers, fetchTodayDataForUser, fetchWeekDataForUser } from './fetcher';
+import { fetchDataForAllUsers, fetchTodayDataForUser, fetchWeekDataForUser, fetchTodayDataForAllUsers, fetchWeekDataForAllUsers } from './fetcher';
 
 /**
  * Main Cloudflare Worker
@@ -187,16 +187,6 @@ export default {
         // Try to get authenticated user (optional)
         const user = await verifySession(env, request).catch(() => null);
         
-        // If user is authenticated, trigger background fetch (don't wait for it)
-        if (user) {
-          // Use waitUntil to fetch data in background without blocking response
-          // This allows the dashboard to load quickly while data updates asynchronously
-          env.ctx?.waitUntil(
-            fetchWeekDataForUser(env, user.id, user.access_token)
-              .catch(error => console.error('Background fetch error:', error))
-          );
-        }
-
         const today = new Date().toISOString().split('T')[0];
         
         // Generate last 7 days dates
@@ -228,7 +218,7 @@ export default {
           today: todayLeaderboard,
           week: weekLeaderboard,
           weeklyData: { dates, users: weeklyData },
-        }, 200, 30); // Cache for 30 seconds
+        }, 200, 0); // No browser caching - always fetch fresh data
       }
 
       // Protected routes - require authentication
@@ -237,23 +227,33 @@ export default {
         return errorResponse('Not authenticated', 401);
       }
 
-      if (path === '/api/leaderboard/today') {
-        // Today's leaderboard - fetch fresh data for current user
-        const today = new Date().toISOString().split('T')[0];
-        
-        // Fetch latest data for current user
+      if (path === '/api/refresh-all' && request.method === 'POST') {
+        // Refresh week's data for all users from WakaTime API
+        // Only available to logged-in users
         try {
-          await fetchTodayDataForUser(env, user.id, user.access_token);
-        } catch (error) {
-          console.error('Error fetching today data:', error);
+          await fetchWeekDataForAllUsers(env);
+          return new Response(JSON.stringify({ success: true, message: 'Week data refreshed for all users' }), {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-store, no-cache, must-revalidate',
+              ...corsHeaders,
+            },
+          });
+        } catch (error: any) {
+          return errorResponse('Error refreshing data: ' + error.message, 500);
         }
-        
+      }
+
+      if (path === '/api/leaderboard/today') {
+        // Today's leaderboard - just fetch from database
+        const today = new Date().toISOString().split('T')[0];
         const leaderboard = await getLeaderboard(env, today, today);
         return jsonResponse(leaderboard);
       }
 
       if (path === '/api/leaderboard/week') {
-        // Last 7 days leaderboard - fetch fresh data for current user
+        // Last 7 days leaderboard - just fetch from database
         const dates: string[] = [];
         for (let i = 6; i >= 0; i--) {
           const date = new Date();
@@ -263,31 +263,17 @@ export default {
         const start = dates[0];
         const end = dates[dates.length - 1];
         
-        // Fetch latest week data for current user
-        try {
-          await fetchWeekDataForUser(env, user.id, user.access_token);
-        } catch (error) {
-          console.error('Error fetching weekly data:', error);
-        }
-        
         const leaderboard = await getLeaderboard(env, start, end);
         return jsonResponse(leaderboard);
       }
 
       if (path === '/api/weekly-data') {
-        // Last 7 days data for chart - fetch fresh data for current user
+        // Last 7 days data for chart - just fetch from database
         const dates: string[] = [];
         for (let i = 6; i >= 0; i--) {
           const date = new Date();
           date.setDate(date.getDate() - i);
           dates.push(date.toISOString().split('T')[0]);
-        }
-
-        // Fetch latest data for current user
-        try {
-          await fetchTodayDataForUser(env, user.id, user.access_token);
-        } catch (error) {
-          console.error('Error fetching weekly chart data:', error);
         }
 
         const weeklyData = await getWeeklyData(env, dates);
@@ -355,9 +341,10 @@ export default {
         }
 
         if (path === '/api/admin/fetch-now') {
-          // Trigger manual data fetch
-          await fetchDataForAllUsers(env);
-          return jsonResponse({ success: true, message: 'Data fetch initiated' });
+          // Trigger manual data fetch for today
+          const useToday = url.searchParams.get('today') === 'true';
+          await fetchDataForAllUsers(env, useToday);
+          return jsonResponse({ success: true, message: `Data fetch initiated for ${useToday ? 'today' : 'yesterday'}` });
         }
       }
 

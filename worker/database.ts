@@ -116,16 +116,18 @@ export async function getLeaderboard(
       u.username,
       u.display_name,
       u.photo_url,
-      SUM(ds.total_seconds) as total_seconds
+      u.is_admin,
+      COALESCE(SUM(ds.total_seconds), 0) as total_seconds
     FROM users u
-    JOIN daily_stats ds ON u.id = ds.user_id
-    WHERE ds.date >= ? AND ds.date <= ?
-    GROUP BY u.id, u.username, u.display_name, u.photo_url
+    LEFT JOIN daily_stats ds ON u.id = ds.user_id AND ds.date >= ? AND ds.date <= ?
+    WHERE u.is_banned = 0
+    GROUP BY u.id, u.username, u.display_name, u.photo_url, u.is_admin
     ORDER BY total_seconds DESC
   `).bind(startDate, endDate).all();
 
   return results.results.map((row: any, index: number) => ({
     ...row,
+    is_admin: row.is_admin === 1,
     rank: index + 1,
   }));
 }

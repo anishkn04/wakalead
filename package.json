@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "deploy": "npm run build && wrangler pages deploy dist",
+    "deploy": "npm run build && wrangler pages deploy dist --project-name=wakalead --commit-dirty=true",
+    "deploy:both": "npm run build && wrangler pages deploy dist --project-name=wakalead --commit-dirty=true && npx wrangler deploy",
     "worker:dev": "wrangler dev",
     "worker:deploy": "wrangler deploy",
     "db:migrate": "wrangler d1 execute wakalead --file=./schema.sql"

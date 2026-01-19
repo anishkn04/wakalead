@@ -19,6 +19,7 @@ export interface LeaderboardEntry {
   photo_url: string | null;
   total_seconds: number;
   rank: number;
+  is_admin?: boolean;
 }
 
 export interface WeeklyData {
@@ -128,8 +129,12 @@ class ApiClient {
     await this.request(`/admin/users/${userId}/unban`, { method: 'POST' });
   }
 
-  async triggerFetch(): Promise<void> {
-    await this.request('/admin/fetch-now', { method: 'POST' });
+  async triggerFetch(today = true): Promise<void> {
+    await this.request(`/admin/fetch-now?today=${today}`, { method: 'POST' });
+  }
+
+  async refreshAll(): Promise<void> {
+    await this.request('/refresh-all', { method: 'POST' });
   }
 }
 

@@ -12,7 +12,6 @@ interface AdminPanelProps {
 export function AdminPanel({ currentUser }: AdminPanelProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [fetchingData, setFetchingData] = useState(false);
   const [message, setMessage] = useState('');
 
   useEffect(() => {
@@ -70,47 +69,19 @@ export function AdminPanel({ currentUser }: AdminPanelProps) {
     }
   };
 
-  const handleTriggerFetch = async () => {
-    if (!confirm('This will fetch data for all users. Continue?')) {
-      return;
-    }
-
-    try {
-      setFetchingData(true);
-      setMessage('Fetching data for all users...');
-      await api.triggerFetch();
-      setMessage('Data fetch completed successfully!');
-      setTimeout(() => setMessage(''), 5000);
-    } catch (error: any) {
-      setMessage('Error fetching data: ' + error.message);
-    } finally {
-      setFetchingData(false);
-    }
-  };
-
   if (!currentUser.is_admin) {
     return null;
   }
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-            Admin Panel
-          </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Manage users and data fetching
-          </p>
-        </div>
-        
-        <button
-          onClick={handleTriggerFetch}
-          disabled={fetchingData}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg font-medium transition-colors"
-        >
-          {fetchingData ? 'Fetching...' : 'Fetch Data Now'}
-        </button>
+      <div className="mb-6">
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+          Admin Panel
+        </h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          Manage users
+        </p>
       </div>
 
       {message && (
