@@ -46,12 +46,12 @@ export function Leaderboard({ title, entries, loading }: LeaderboardProps) {
   }, [entries, playSound]);
 
   // Helper function to randomly select a message from an array
-  const randomMessage = useMemo(() => (messages: string[]): string => {
+  const randomMessage = (messages: string[]): string => {
     return messages[Math.floor(Math.random() * messages.length)];
-  }, []);
+  };
 
   // Enhanced status message with Hinglish/Nepali humor and conditional logic
-  const getStatusMessage = (rank: number, totalEntries: number, totalSeconds: number, isAdmin?: boolean, dailySeconds?: number): string => {
+  const getStatusMessageInternal = (rank: number, totalEntries: number, totalSeconds: number, isAdmin?: boolean, dailySeconds?: number): string => {
     const hours = totalSeconds / 3600;
     const dailyHours = dailySeconds ? dailySeconds / 3600 : 0;
 
@@ -228,6 +228,16 @@ export function Leaderboard({ title, entries, loading }: LeaderboardProps) {
     return "keep grinding 🚀";
   };
 
+  // Memoize status messages so they don't change on hover/re-render
+  const statusMessages = useMemo(() => {
+    const messages: Record<number, string> = {};
+    entries.forEach(entry => {
+      messages[entry.user_id] = getStatusMessageInternal(entry.rank, entries.length, entry.total_seconds, entry.is_admin);
+    });
+    return messages;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entries]);
+
   if (loading) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-3 sm:p-6">
@@ -358,7 +368,7 @@ export function Leaderboard({ title, entries, loading }: LeaderboardProps) {
                   @{entry.username}
                 </p>
                 <p className="text-xs font-medium text-purple-600 dark:text-purple-400 mt-0.5 line-clamp-2 leading-tight">
-                  {getStatusMessage(entry.rank, entries.length, entry.total_seconds, isAdmin)}
+                  {statusMessages[entry.user_id]}
                 </p>
               </div>
 

@@ -76,9 +76,9 @@ const playSoundEffect = (audioContext: AudioContext, sound: SoundType) => {
 export function SoundProvider({ children }: { children: ReactNode }) {
   const [soundEnabled, setSoundEnabled] = useState(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('soundEnabled') !== 'false';
+      return localStorage.getItem('soundEnabled') === 'true';
     }
-    return true;
+    return false;
   });
   
   const audioContextRef = useRef<AudioContext | null>(null);
