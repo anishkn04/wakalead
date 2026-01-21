@@ -16,7 +16,6 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'today' | 'week'>('today');
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   useEffect(() => {
     loadData();
@@ -37,7 +36,6 @@ export function Dashboard() {
       setTodayLeaderboard(data.today);
       setWeekLeaderboard(data.week);
       setWeeklyData(data.weeklyData);
-      setLastUpdated(new Date());
     } catch (error: any) {
       console.error('Error loading data:', error);
     } finally {
@@ -157,12 +155,6 @@ export function Dashboard() {
           
           {/* Actions */}
           <div className="flex items-center gap-2 flex-wrap">
-            {lastUpdated && (
-              <span className="text-xs text-slate-400 dark:text-zinc-600 mr-2 hidden sm:block">
-                Updated {lastUpdated.toLocaleTimeString()}
-              </span>
-            )}
-            
             {user && (
               <>
                 <button

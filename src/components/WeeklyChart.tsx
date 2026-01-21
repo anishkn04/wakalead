@@ -12,6 +12,7 @@ import {
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import { WeeklyData, formatDate } from '../api';
+import { useTheme } from '../ThemeContext';
 
 ChartJS.register(
   CategoryScale,
@@ -34,6 +35,8 @@ interface WeeklyChartProps {
  */
 export function WeeklyChart({ data, loading }: WeeklyChartProps) {
   const chartRef = useRef<any>(null);
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
 
   // Generate distinct colors for each user
   const colors = [
@@ -98,13 +101,12 @@ export function WeeklyChart({ data, loading }: WeeklyChartProps) {
       legend: {
         position: 'top',
         labels: {
-          color: document.documentElement.classList.contains('dark') 
-            ? 'rgb(229, 231, 235)' 
-            : 'rgb(17, 24, 39)',
+          color: isDark ? 'rgb(161, 161, 170)' : 'rgb(71, 85, 105)',
           usePointStyle: true,
-          padding: 10,
+          padding: 12,
           font: {
             size: window.innerWidth < 640 ? 10 : 12,
+            weight: 500,
           },
         },
       },
@@ -136,24 +138,18 @@ export function WeeklyChart({ data, loading }: WeeklyChartProps) {
         beginAtZero: true,
         ticks: {
           callback: (value) => `${value}h`,
-          color: document.documentElement.classList.contains('dark')
-            ? 'rgb(156, 163, 175)'
-            : 'rgb(75, 85, 99)',
+          color: isDark ? 'rgb(161, 161, 170)' : 'rgb(71, 85, 105)',
           font: {
             size: window.innerWidth < 640 ? 9 : 11,
           },
         },
         grid: {
-          color: document.documentElement.classList.contains('dark')
-            ? 'rgba(75, 85, 99, 0.2)'
-            : 'rgba(209, 213, 219, 0.5)',
+          color: isDark ? 'rgba(63, 63, 70, 0.5)' : 'rgba(226, 232, 240, 0.8)',
         },
       },
       x: {
         ticks: {
-          color: document.documentElement.classList.contains('dark')
-            ? 'rgb(156, 163, 175)'
-            : 'rgb(75, 85, 99)',
+          color: isDark ? 'rgb(161, 161, 170)' : 'rgb(71, 85, 105)',
           font: {
             size: window.innerWidth < 640 ? 9 : 11,
           },
