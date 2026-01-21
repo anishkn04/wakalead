@@ -49,13 +49,11 @@ export function WeeklyChart({ data, loading }: WeeklyChartProps) {
 
   if (loading || !data) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-3 sm:p-6">
-        <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white">
+      <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 p-4 sm:p-6">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
           Weekly Performance
         </h2>
-        <div className="animate-pulse">
-          <div className="h-48 sm:h-64 bg-gray-200 dark:bg-gray-700 rounded" />
-        </div>
+        <div className="h-64 sm:h-72 bg-slate-100 dark:bg-zinc-800 rounded-xl animate-pulse" />
       </div>
     );
   }
@@ -170,11 +168,11 @@ export function WeeklyChart({ data, loading }: WeeklyChartProps) {
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-3 sm:p-6">
-      <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white">
-        Weekly Performance (Last 7 Days)
+    <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 p-4 sm:p-6">
+      <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
+        Weekly Performance
       </h2>
-      <div className="h-64 sm:h-80">
+      <div className="h-64 sm:h-72">
         <Line ref={chartRef} data={chartData} options={options} />
       </div>
     </div>

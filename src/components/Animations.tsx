@@ -99,25 +99,12 @@ interface FlameEffectProps {
 }
 
 /**
- * Animated flame effect for top performers
+ * Animated flame effect for top performers - subtle version
  */
-export function FlameEffect({ intensity = 'medium', className = '' }: FlameEffectProps) {
-  const flameCount = intensity === 'high' ? 5 : intensity === 'medium' ? 3 : 2;
-
+export function FlameEffect({ className = '' }: FlameEffectProps) {
   return (
-    <span className={`inline-flex ${className}`}>
-      {Array.from({ length: flameCount }).map((_, i) => (
-        <span
-          key={i}
-          className="animate-flame inline-block"
-          style={{
-            animationDelay: `${i * 100}ms`,
-            transform: `scale(${1 - i * 0.1})`,
-          }}
-        >
-          🔥
-        </span>
-      ))}
+    <span className={`flame inline-block ${className}`}>
+      🔥
     </span>
   );
 }
@@ -128,13 +115,13 @@ interface PulsingDotProps {
 }
 
 /**
- * Live pulsing indicator
+ * Live pulsing indicator - minimal
  */
-export function PulsingDot({ color = 'bg-green-500', className = '' }: PulsingDotProps) {
+export function PulsingDot({ color = 'bg-emerald-500', className = '' }: PulsingDotProps) {
   return (
-    <span className={`relative inline-flex h-3 w-3 ${className}`}>
+    <span className={`relative inline-flex h-2 w-2 ${className}`}>
       <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${color} opacity-75`}></span>
-      <span className={`relative inline-flex rounded-full h-3 w-3 ${color}`}></span>
+      <span className={`relative inline-flex rounded-full h-2 w-2 ${color}`}></span>
     </span>
   );
 }

@@ -128,7 +128,7 @@ export function useSound() {
 }
 
 /**
- * Sound toggle button component
+ * Sound toggle button component - Clean, minimal design
  */
 export function SoundToggle() {
   const { soundEnabled, toggleSound, playSound } = useSound();
@@ -136,7 +136,6 @@ export function SoundToggle() {
   const handleClick = () => {
     toggleSound();
     if (!soundEnabled) {
-      // Play a sound to confirm it's enabled
       setTimeout(() => playSound('pop'), 50);
     }
   };
@@ -144,28 +143,17 @@ export function SoundToggle() {
   return (
     <button
       onClick={handleClick}
-      className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-all group"
+      className="p-2.5 rounded-xl text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800/80 transition-colors"
       aria-label={soundEnabled ? 'Disable sounds' : 'Enable sounds'}
       title={soundEnabled ? 'Sounds on' : 'Sounds off'}
     >
       {soundEnabled ? (
-        <svg 
-          className="w-5 h-5 text-gray-700 dark:text-gray-300 group-hover:scale-110 transition-transform" 
-          fill="none" 
-          stroke="currentColor" 
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
         </svg>
       ) : (
-        <svg 
-          className="w-5 h-5 text-gray-400 dark:text-gray-500 group-hover:scale-110 transition-transform" 
-          fill="none" 
-          stroke="currentColor" 
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 9.75L19.5 12m0 0l2.25 2.25M19.5 12l2.25-2.25M19.5 12l-2.25 2.25m-10.5-6l4.72-4.72a.75.75 0 011.28.531V19.94a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.506-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.395C2.806 8.757 3.63 8.25 4.51 8.25H6.75z" />
         </svg>
       )}
     </button>
