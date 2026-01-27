@@ -9,6 +9,20 @@ import { fetchDataForAllUsers, fetchTodayDataForUser, fetchWeekDataForUser, fetc
  * Handles all API routes and scheduled tasks
  */
 
+// Helper to get date in Nepal timezone (UTC+5:45)
+function getNepalDate(date = new Date()): Date {
+  const utc = date.getTime();
+  const nepalOffset = 5.75 * 60 * 60 * 1000; // UTC+5:45 in milliseconds
+  return new Date(utc + nepalOffset);
+}
+
+function formatDate(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 // CORS headers for frontend
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -187,14 +201,14 @@ export default {
         // Try to get authenticated user (optional)
         const user = await verifySession(env, request).catch(() => null);
         
-        const today = new Date().toISOString().split('T')[0];
+        const today = formatDate(getNepalDate());
         
         // Generate last 7 days dates
         const dates: string[] = [];
         for (let i = 6; i >= 0; i--) {
-          const date = new Date();
-          date.setDate(date.getDate() - i);
-          dates.push(date.toISOString().split('T')[0]);
+          const nepalNow = getNepalDate();
+          nepalNow.setUTCDate(nepalNow.getUTCDate() - i);
+          dates.push(formatDate(nepalNow));
         }
         const weekStart = dates[0]; // 7 days ago
         const weekEnd = dates[dates.length - 1]; // today
@@ -247,7 +261,7 @@ export default {
 
       if (path === '/api/leaderboard/today') {
         // Today's leaderboard - just fetch from database
-        const today = new Date().toISOString().split('T')[0];
+        const today = formatDate(getNepalDate());
         const leaderboard = await getLeaderboard(env, today, today);
         return jsonResponse(leaderboard);
       }
@@ -256,9 +270,9 @@ export default {
         // Last 7 days leaderboard - just fetch from database
         const dates: string[] = [];
         for (let i = 6; i >= 0; i--) {
-          const date = new Date();
-          date.setDate(date.getDate() - i);
-          dates.push(date.toISOString().split('T')[0]);
+          const nepalNow = getNepalDate();
+          nepalNow.setUTCDate(nepalNow.getUTCDate() - i);
+          dates.push(formatDate(nepalNow));
         }
         const start = dates[0];
         const end = dates[dates.length - 1];
@@ -271,9 +285,9 @@ export default {
         // Last 7 days data for chart - just fetch from database
         const dates: string[] = [];
         for (let i = 6; i >= 0; i--) {
-          const date = new Date();
-          date.setDate(date.getDate() - i);
-          dates.push(date.toISOString().split('T')[0]);
+          const nepalNow = getNepalDate();
+          nepalNow.setUTCDate(nepalNow.getUTCDate() - i);
+          dates.push(formatDate(nepalNow));
         }
 
         const weeklyData = await getWeeklyData(env, dates);

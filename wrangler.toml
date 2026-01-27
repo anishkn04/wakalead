@@ -8,19 +8,19 @@ mode = "smart"
 
 # D1 Database binding
 [[d1_databases]]
-binding = "DB"
-database_name = "wakalead"
-database_id = "YOUR_DATABASE_ID_HERE" 
+binding = ""
+database_name = ""
+database_id = "" 
 
 # KV namespace for session storage
 [[kv_namespaces]]
-binding = "SESSIONS"
-id = "YOUR_KV_NAMESPACE_ID_HERE"
+binding = ""
+id = ""
 
 # Environment variables (set these as secrets via wrangler)
 [vars]
 WAKATIME_CLIENT_ID = ""
 WAKATIME_REDIRECT_URI = ""
-FRONTEND_URL = ""
+FRONTEND_URL = "https://wakalead.pages.dev/"
 SESSION_SECRET = ""
-ADMIN_WAKATIME_ID = "your_wakatime_id_here"
+ADMIN_WAKATIME_ID = ""

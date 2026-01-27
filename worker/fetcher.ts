@@ -12,6 +12,20 @@ import {
   createOrUpdateUser,
 } from './database';
 
+// Helper to get date in Nepal timezone (UTC+5:45)
+function getNepalDate(date = new Date()): Date {
+  const utc = date.getTime();
+  const nepalOffset = 5.75 * 60 * 60 * 1000; // UTC+5:45 in milliseconds
+  return new Date(utc + nepalOffset);
+}
+
+function formatDate(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 /**
  * Data fetcher - runs on a scheduled cron job
  * Fetches yesterday's data for all users to stay within rate limits
@@ -25,11 +39,11 @@ import {
 export async function fetchDataForAllUsers(env: Env, useToday = false): Promise<void> {
   console.log('Starting scheduled data fetch...');
 
-  const targetDate = new Date();
+  const targetDate = getNepalDate();
   if (!useToday) {
-    targetDate.setDate(targetDate.getDate() - 1);
+    targetDate.setUTCDate(targetDate.getUTCDate() - 1);
   }
-  const dateStr = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
+  const dateStr = formatDate(targetDate);
 
   // Get all users
   const users = await getAllUsers(env);
@@ -102,7 +116,7 @@ export async function fetchTodayDataForUser(
   userId: number,
   accessToken: string
 ): Promise<void> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = formatDate(getNepalDate());
 
   // Check if already fetched today
   if (await wasFetchedToday(env, userId, today)) {
@@ -130,7 +144,7 @@ export async function fetchTodayDataForUser(
  * Optimized: Fetches data in parallel batches for better performance
  */
 export async function fetchTodayDataForAllUsers(env: Env, forceRefresh = false): Promise<void> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = formatDate(getNepalDate());
   const users = await getAllUsers(env);
   
   console.log(`Fetching today's data for ${users.length} users (forceRefresh: ${forceRefresh})`);
@@ -209,9 +223,9 @@ export async function fetchWeekDataForUser(
   // Generate last 7 days dates
   const dates: string[] = [];
   for (let i = 6; i >= 0; i--) {
-    const date = new Date();
-    date.setDate(date.getDate() - i);
-    dates.push(date.toISOString().split('T')[0]);
+    const nepalNow = getNepalDate();
+    nepalNow.setUTCDate(nepalNow.getUTCDate() - i);
+    dates.push(formatDate(nepalNow));
   }
 
   try {
@@ -254,9 +268,9 @@ export async function fetchWeekDataForAllUsers(env: Env): Promise<void> {
   // Generate last 7 days dates
   const dates: string[] = [];
   for (let i = 6; i >= 0; i--) {
-    const date = new Date();
-    date.setDate(date.getDate() - i);
-    dates.push(date.toISOString().split('T')[0]);
+    const nepalNow = getNepalDate();
+    nepalNow.setUTCDate(nepalNow.getUTCDate() - i);
+    dates.push(formatDate(nepalNow));
   }
   const startDate = dates[0];
   const endDate = dates[dates.length - 1];
