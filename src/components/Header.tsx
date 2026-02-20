@@ -20,9 +20,7 @@ export function Header() {
           {/* Logo & Brand */}
           <a href="/" className="flex items-center gap-3 group">
             <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/20 group-hover:shadow-blue-500/30 transition-shadow">
-              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
+              <img src="/wakalead.svg" alt="WakaLead" />
             </div>
             <div>
               <h1 className="text-lg font-semibold text-slate-900 dark:text-white tracking-tight">
