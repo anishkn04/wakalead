@@ -19,7 +19,7 @@ export function Header() {
         <div className="flex items-center justify-between h-16">
           {/* Logo & Brand */}
           <a href="/" className="flex items-center gap-3 group">
-            <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/20 group-hover:shadow-blue-500/30 transition-shadow">
+            <div className="relative w-9 h-9 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20 group-hover:shadow-blue-500/30 transition-shadow">
               <img src="/wakalead.svg" alt="WakaLead" />
             </div>
             <div>
