@@ -118,6 +118,78 @@ export function parseDailySummary(daySummary: any): DailySummaryStats {
   };
 }
 
+/** Returns the most-active entry by seconds from a WakaTime breakdown array. */
+function topEntry(
+  breakdown: any[] | undefined,
+  key: 'name'
+): string | null {
+  if (!Array.isArray(breakdown) || breakdown.length === 0) return null;
+  const top = breakdown.reduce((best, item) =>
+    (item.total_seconds || 0) > (best.total_seconds || 0) ? item : best,
+    breakdown[0]
+  );
+  return top?.[key] || null;
+}
+
+/**
+ * Aggregate the top language / editor / project across a batch of day
+ * summaries (e.g. the 7 days returned by a weekly summaries call).
+ * Reuses data the fetcher already downloads - no extra API requests.
+ */
+export function parseTopStats(
+  daySummaries: any[]
+): { topLanguage: string | null; topEditor: string | null; topProject: string | null } {
+  const byField: Record<'topLanguage' | 'topEditor' | 'topProject', any[]> = {
+    topLanguage: [],
+    topEditor: [],
+    topProject: [],
+  };
+
+  const fieldMap: Array<[keyof typeof byField, string]> = [
+    ['topLanguage', 'languages'],
+    ['topEditor', 'editors'],
+    ['topProject', 'projects'],
+  ];
+
+  for (const day of daySummaries) {
+    if (!day) continue;
+    for (const [field, apiKey] of fieldMap) {
+      const list = day[apiKey];
+      if (Array.isArray(list)) byField[field].push(...list);
+    }
+  }
+
+  return {
+    topLanguage: topEntry(byField.topLanguage, 'name'),
+    topEditor: topEntry(byField.topEditor, 'name'),
+    topProject: topEntry(byField.topProject, 'name'),
+  };
+}
+
+/**
+ * Fetch the user's all-time coding seconds (since account creation).
+ * Lightweight endpoint, gated by fetch_log to respect rate limits.
+ */
+export async function fetchAllTimeSinceToday(
+  accessToken: string
+): Promise<number> {
+  const response = await fetch(
+    `${WAKATIME_API_BASE}/users/current/all_time_since_today`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch all-time stats');
+  }
+
+  const data = await response.json();
+  return Math.round(data?.data?.total_seconds || 0);
+}
+
 /**
  * Refresh access token using refresh token
  */

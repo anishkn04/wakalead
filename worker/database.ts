@@ -118,6 +118,53 @@ export async function storeDailyStats(
 }
 
 /**
+ * Store or update a user's aggregated stats (top language/editor/project,
+ * all-time seconds). Used for personalized leaderboard comments.
+ */
+export async function upsertUserStats(
+  env: Env,
+  userId: number,
+  stats: {
+    topLanguage?: string | null;
+    topEditor?: string | null;
+    topProject?: string | null;
+    allTimeSeconds?: number;
+  }
+): Promise<void> {
+  const now = Date.now();
+
+  // Keep existing values when a field isn't provided (e.g. all-time fetch
+  // runs separately from language parsing)
+  const existing = await env.DB.prepare(
+    'SELECT * FROM user_stats WHERE user_id = ?'
+  ).bind(userId).first<any>();
+
+  const topLanguage = stats.topLanguage !== undefined ? stats.topLanguage : (existing?.top_language ?? null);
+  const topEditor = stats.topEditor !== undefined ? stats.topEditor : (existing?.top_editor ?? null);
+  const topProject = stats.topProject !== undefined ? stats.topProject : (existing?.top_project ?? null);
+  const allTimeSeconds = stats.allTimeSeconds !== undefined ? stats.allTimeSeconds : (existing?.all_time_seconds ?? 0);
+
+  await env.DB.prepare(`
+    INSERT INTO user_stats (user_id, top_language, top_editor, top_project, all_time_seconds, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id)
+    DO UPDATE SET top_language = ?, top_editor = ?, top_project = ?, all_time_seconds = ?, updated_at = ?
+  `).bind(
+    userId,
+    topLanguage,
+    topEditor,
+    topProject,
+    allTimeSeconds,
+    now,
+    topLanguage,
+    topEditor,
+    topProject,
+    allTimeSeconds,
+    now
+  ).run();
+}
+
+/**
  * Get leaderboard for a date range
  */
 export async function getLeaderboard(
@@ -136,11 +183,17 @@ export async function getLeaderboard(
       COALESCE(SUM(ds.ai_seconds), 0) as ai_seconds,
       COALESCE(SUM(ds.human_seconds), 0) as human_seconds,
       COALESCE(SUM(ds.ai_lines), 0) as ai_lines,
-      COALESCE(SUM(ds.human_lines), 0) as human_lines
+      COALESCE(SUM(ds.human_lines), 0) as human_lines,
+      us.all_time_seconds,
+      us.top_language,
+      us.top_editor,
+      us.top_project
     FROM users u
     LEFT JOIN daily_stats ds ON u.id = ds.user_id AND ds.date >= ? AND ds.date <= ?
+    LEFT JOIN user_stats us ON u.id = us.user_id
     WHERE u.is_banned = 0
-    GROUP BY u.id, u.username, u.display_name, u.photo_url, u.is_admin
+    GROUP BY u.id, u.username, u.display_name, u.photo_url, u.is_admin,
+             us.all_time_seconds, us.top_language, us.top_editor, us.top_project
     ORDER BY total_seconds DESC
   `).bind(startDate, endDate).all();
 
@@ -239,11 +292,30 @@ export async function wasFetchedToday(
   userId: number,
   date: string
 ): Promise<boolean> {
-  const result = await env.DB.prepare(`
-    SELECT COUNT(*) as count
+  const result = await env.DB.prepare(
+    `SELECT COUNT(*) as count
     FROM fetch_log
-    WHERE user_id = ? AND fetch_date = ? AND status = 'success'
-  `).bind(userId, date).first<{ count: number }>();
+    WHERE user_id = ? AND fetch_date = ? AND status = 'success'`
+  ).bind(userId, date).first<{ count: number }>();
+
+  return (result?.count || 0) > 0;
+}
+
+/**
+ * Check if a successful fetch of a given type happened since a timestamp.
+ * Used to gate infrequent calls (e.g. all-time stats) to respect rate limits.
+ */
+export async function recentFetch(
+  env: Env,
+  userId: number,
+  fetchType: string,
+  sinceTs: number
+): Promise<boolean> {
+  const result = await env.DB.prepare(
+    `SELECT COUNT(*) as count
+    FROM fetch_log
+    WHERE user_id = ? AND fetch_type = ? AND status = 'success' AND fetched_at >= ?`
+  ).bind(userId, fetchType, sinceTs).first<{ count: number }>();
 
   return (result?.count || 0) > 0;
 }

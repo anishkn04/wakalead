@@ -48,6 +48,16 @@ export interface DailySummaryStats {
   human_lines: number;
 }
 
+/** Aggregated per-user metadata used for personalized comments */
+export interface UserStats {
+  user_id: number;
+  top_language: string | null;
+  top_editor: string | null;
+  top_project: string | null;
+  all_time_seconds: number;
+  updated_at: number;
+}
+
 export interface LeaderboardEntry {
   user_id: number;
   username: string;
@@ -58,7 +68,12 @@ export interface LeaderboardEntry {
   human_seconds: number;
   ai_lines: number;
   human_lines: number;
+  all_time_seconds?: number;
+  top_language?: string | null;
+  top_editor?: string | null;
+  top_project?: string | null;
   rank: number;
+  is_admin?: boolean;
 }
 
 export interface WeeklyData {

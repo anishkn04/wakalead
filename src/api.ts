@@ -22,6 +22,10 @@ export interface LeaderboardEntry {
   human_seconds: number;
   ai_lines: number;
   human_lines: number;
+  all_time_seconds?: number;
+  top_language?: string | null;
+  top_editor?: string | null;
+  top_project?: string | null;
   rank: number;
   is_admin?: boolean;
 }

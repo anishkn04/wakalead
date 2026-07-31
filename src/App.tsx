@@ -40,13 +40,13 @@ function App() {
     <ThemeProvider>
       <SoundProvider>
         <Suspense fallback={
-          <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+          <div className="min-h-screen bg-slate-50 dark:bg-[#0a0a0b] flex items-center justify-center">
             <div className="text-center">
               <div className="relative">
                 <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
                 <div className="absolute inset-0 animate-ping rounded-full h-12 w-12 border border-blue-500 opacity-20"></div>
               </div>
-              <p className="text-gray-600 dark:text-gray-400 animate-pulse">Loading...</p>
+              <p className="text-slate-500 dark:text-zinc-400 animate-pulse">Loading...</p>
             </div>
           </div>
         }>

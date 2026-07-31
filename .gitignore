@@ -7,3 +7,4 @@ dist
 *.log
 set-secrets.sh
 wrangler.real.toml
+wrangler.toml

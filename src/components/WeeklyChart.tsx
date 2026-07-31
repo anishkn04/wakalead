@@ -60,7 +60,28 @@ export function WeeklyChart({ data, metric = 'total', onMetricChange, loading }:
         <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
           Weekly Performance
         </h2>
-        <div className="h-64 sm:h-72 bg-slate-100 dark:bg-zinc-800 rounded-xl animate-pulse" />
+        <div className="h-64 sm:h-72 bg-slate-100 dark:bg-zinc-800 rounded-xl animate-shimmer" />
+      </div>
+    );
+  }
+
+  if (data.users.length === 0) {
+    return (
+      <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 p-4 sm:p-6">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
+          Weekly Performance
+        </h2>
+        <div className="h-64 sm:h-72 flex flex-col items-center justify-center gap-2 text-center">
+          <div className="w-14 h-14 rounded-full bg-slate-100 dark:bg-zinc-800 flex items-center justify-center mb-1">
+            <svg className="w-7 h-7 text-slate-400 dark:text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h9.826a.75.75 0 01.643.397l.447.893a.75.75 0 01.643.397l1.24 2.48a.75.75 0 01.643.397l1.033 2.065a.75.75 0 01-.643 1.065l-1.5.375a.75.75 0 01-.643-.397l-1.034-2.065a.75.75 0 01-.643-.397L10.5 6.75H6.75" />
+            </svg>
+          </div>
+          <p className="text-slate-500 dark:text-zinc-500 font-medium">No weekly data yet</p>
+          <p className="text-sm text-slate-400 dark:text-zinc-600">
+            Sync once and the 7-day trend appears here.
+          </p>
+        </div>
       </div>
     );
   }

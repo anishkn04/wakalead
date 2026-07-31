@@ -143,8 +143,9 @@ export function SoundToggle() {
   return (
     <button
       onClick={handleClick}
-      className="p-2.5 rounded-xl text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800/80 transition-colors"
+      className="p-2.5 rounded-xl text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800/80 transition-colors active:scale-95"
       aria-label={soundEnabled ? 'Disable sounds' : 'Enable sounds'}
+      aria-pressed={soundEnabled}
       title={soundEnabled ? 'Sounds on' : 'Sounds off'}
     >
       {soundEnabled ? (

@@ -53,3 +53,18 @@ CREATE TABLE IF NOT EXISTS fetch_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_fetch_log_user_date ON fetch_log(user_id, fetch_date);
+
+-- User stats table - aggregated metadata for personalized comments
+-- Top language/editor/project parsed from summaries, lifetime time from
+-- the all_time_since_today endpoint
+CREATE TABLE IF NOT EXISTS user_stats (
+    user_id INTEGER PRIMARY KEY,
+    top_language TEXT,
+    top_editor TEXT,
+    top_project TEXT,
+    all_time_seconds INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_stats_updated ON user_stats(updated_at);

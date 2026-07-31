@@ -11,16 +11,17 @@
     "worker:dev": "wrangler dev",
     "worker:deploy": "wrangler deploy",
     "db:migrate": "wrangler d1 execute wakalead --file=./schema.sql",
-    "db:migrate:local": "wrangler d1 execute wakalead --local --file=./migrations/add_ai_stats.sql",
-    "db:migrate:remote": "wrangler d1 execute wakalead --remote --file=./migrations/add_ai_stats.sql"
+    "db:migrate:local": "wrangler d1 execute wakalead --local --file=./schema.sql && wrangler d1 execute wakalead --local --file=./migrations/add_user_stats.sql",
+    "db:migrate:remote": "wrangler d1 execute wakalead --remote --file=./schema.sql && wrangler d1 execute wakalead --remote --file=./migrations/add_user_stats.sql"
   },
   "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^6.28.0",
+    "@fontsource/inter": "^5.3.0",
     "chart.js": "^4.4.7",
+    "date-fns": "^4.1.0",
+    "react": "^18.3.1",
     "react-chartjs-2": "^5.2.0",
-    "date-fns": "^4.1.0"
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250106.0",

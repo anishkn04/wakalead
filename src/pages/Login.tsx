@@ -12,16 +12,22 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#0a0a0b] flex flex-col">
+    <div className="min-h-screen bg-slate-50 dark:bg-[#0a0a0b] flex flex-col relative overflow-hidden">
+      {/* Ambient background accents */}
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-blue-500/10 dark:bg-blue-500/10 blur-3xl" />
+        <div className="absolute -bottom-32 -right-32 w-96 h-96 rounded-full bg-purple-500/10 dark:bg-purple-500/10 blur-3xl" />
+      </div>
+
       {/* Main Content */}
-      <div className="flex-1 flex items-center justify-center px-4 py-12">
+      <div className="flex-1 flex items-center justify-center px-4 py-12 relative">
         <div className="w-full max-w-md">
           {/* Card */}
-          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-xl shadow-slate-200/50 dark:shadow-none p-8 sm:p-10">
+          <div className="card p-8 sm:p-10">
             {/* Logo */}
             <div className="flex justify-center mb-8">
               <div 
-                className={`w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/30 transition-transform duration-300 ${isHovering ? 'scale-110' : ''}`}
+                className={`w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/30 transition-transform duration-300 ${isHovering ? 'scale-110 rotate-3' : ''}`}
                 onMouseEnter={() => setIsHovering(true)}
                 onMouseLeave={() => setIsHovering(false)}
               >
@@ -33,7 +39,7 @@ export function Login() {
 
             {/* Title */}
             <div className="text-center mb-8">
-              <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
+              <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2 tracking-tight">
                 Welcome to WakaLead
               </h1>
               <p className="text-slate-500 dark:text-zinc-500">
@@ -51,7 +57,8 @@ export function Login() {
                     </svg>
                   ),
                   title: "Daily & Weekly Rankings",
-                  description: "See how you stack up"
+                  description: "See how you stack up",
+                  color: "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40"
                 },
                 {
                   icon: (
@@ -60,7 +67,8 @@ export function Login() {
                     </svg>
                   ),
                   title: "Performance Analytics",
-                  description: "Visualize your progress"
+                  description: "Visualize your progress",
+                  color: "text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40"
                 },
                 {
                   icon: (
@@ -69,14 +77,15 @@ export function Login() {
                     </svg>
                   ),
                   title: "Motivational Roasts",
-                  description: "Stay accountable 🔥"
+                  description: "Stay accountable 🔥",
+                  color: "text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/40"
                 }
               ].map((feature, index) => (
                 <div 
                   key={index}
                   className="flex items-center gap-4 p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors"
                 >
-                  <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-slate-100 dark:bg-zinc-800 flex items-center justify-center text-slate-600 dark:text-zinc-400">
+                  <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${feature.color}`}>
                     {feature.icon}
                   </div>
                   <div>
@@ -90,7 +99,7 @@ export function Login() {
             {/* Login Button */}
             <button
               onClick={handleLogin}
-              className="w-full py-3.5 px-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold rounded-xl shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all flex items-center justify-center gap-2"
+              className="w-full py-3.5 px-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold rounded-xl shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
