@@ -11,7 +11,7 @@ import {
   ChartOptions,
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import { WeeklyData, formatDate } from '../api';
+import { WeeklyData, Metric, METRICS, formatDate } from '../api';
 import { useTheme } from '../ThemeContext';
 
 ChartJS.register(
@@ -26,17 +26,21 @@ ChartJS.register(
 
 interface WeeklyChartProps {
   data: WeeklyData | null;
+  metric?: Metric;
+  onMetricChange?: (metric: Metric) => void;
   loading?: boolean;
 }
 
 /**
- * Weekly performance chart - displays 7-day coding time trends
- * Each user gets a unique colored line
+ * Weekly performance chart - displays 7-day coding activity trends
+ * Each user gets a unique colored line. Metric toggle switches
+ * between total / human / AI time and AI lines.
  */
-export function WeeklyChart({ data, loading }: WeeklyChartProps) {
+export function WeeklyChart({ data, metric = 'total', onMetricChange, loading }: WeeklyChartProps) {
   const chartRef = useRef<any>(null);
   const { theme } = useTheme();
   const isDark = theme === 'dark';
+  const isLines = metric === 'lines';
 
   // Generate distinct colors for each user
   const colors = [
@@ -61,20 +65,28 @@ export function WeeklyChart({ data, loading }: WeeklyChartProps) {
     );
   }
 
+  // Convert stored value into chart units (seconds -> hours for time metrics)
+  const toChartValue = (value: number) => (isLines ? value : value / 3600);
+
   // Prepare chart data
   const chartData = {
     labels: data.dates.map(formatDate),
     datasets: data.users.map((user, index) => {
-      // Create a map of date -> seconds for quick lookup
+      // Create a map of date -> value for quick lookup
       const dataMap = new Map(
-        user.daily_data.map(d => [d.date, d.seconds])
+        user.daily_data.map(d => [
+          d.date,
+          toChartValue(
+            metric === 'total' ? d.seconds :
+            metric === 'human' ? d.human_seconds :
+            metric === 'ai' ? d.ai_seconds :
+            d.ai_lines
+          ),
+        ])
       );
 
       // Fill in data for all dates (use 0 if no data)
-      const values = data.dates.map(date => {
-        const seconds = dataMap.get(date) || 0;
-        return seconds / 3600; // Convert to hours for better readability
-      });
+      const values = data.dates.map(date => dataMap.get(date) || 0);
 
       const color = colors[index % colors.length];
 
@@ -114,8 +126,8 @@ export function WeeklyChart({ data, loading }: WeeklyChartProps) {
         callbacks: {
           label: (context) => {
             const label = context.dataset.label || '';
-            const value = context.parsed.y?.toFixed(1) ?? '0.0';
-            return `${label}: ${value}h`;
+            const value = context.parsed.y ?? 0;
+            return `${label}: ${isLines ? Math.round(value) : value.toFixed(1)}${isLines ? ' lines' : 'h'}`;
           },
           beforeBody: (tooltipItems) => {
             // Sort tooltip items by value in descending order
@@ -137,7 +149,7 @@ export function WeeklyChart({ data, loading }: WeeklyChartProps) {
       y: {
         beginAtZero: true,
         ticks: {
-          callback: (value) => `${value}h`,
+          callback: (value) => (isLines ? `${value}` : `${value}h`),
           color: isDark ? 'rgb(161, 161, 170)' : 'rgb(71, 85, 105)',
           font: {
             size: window.innerWidth < 640 ? 9 : 11,
@@ -165,9 +177,26 @@ export function WeeklyChart({ data, loading }: WeeklyChartProps) {
 
   return (
     <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 p-4 sm:p-6">
-      <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
-        Weekly Performance
-      </h2>
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+          Weekly Performance
+        </h2>
+        <div className="inline-flex rounded-lg bg-slate-100 dark:bg-zinc-800 p-0.5">
+          {METRICS.map((m) => (
+            <button
+              key={m.value}
+              onClick={() => onMetricChange?.(m.value)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                metric === m.value
+                  ? 'bg-white dark:bg-zinc-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                  : 'text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200'
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="h-64 sm:h-72">
         <Line ref={chartRef} data={chartData} options={options} />
       </div>

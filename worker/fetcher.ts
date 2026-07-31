@@ -1,7 +1,7 @@
 import { Env } from './types';
 import {
   fetchWakaTimeSummaries,
-  calculateTotalSeconds,
+  parseDailySummary,
   refreshAccessToken,
 } from './wakatime';
 import {
@@ -88,13 +88,14 @@ export async function fetchDataForAllUsers(env: Env, useToday = false): Promise<
       console.log(`Fetching WakaTime data for user ${user.username}`);
       const summaries = await fetchWakaTimeSummaries(accessToken, dateStr, dateStr);
       
-      const totalSeconds = calculateTotalSeconds(summaries.data || []);
+      const daySummary = (summaries.data || [])[0];
+      const stats = parseDailySummary(daySummary || {});
       
       // Store in database
-      await storeDailyStats(env, user.id, dateStr, totalSeconds);
+      await storeDailyStats(env, user.id, dateStr, stats);
       await logFetch(env, user.id, 'daily', dateStr, 'success');
       
-      console.log(`Successfully fetched data for ${user.username}: ${totalSeconds}s`);
+      console.log(`Successfully fetched data for ${user.username}: ${stats.total_seconds}s (AI: ${stats.ai_seconds}s)`);
 
       // Small delay to be nice to WakaTime API
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -125,9 +126,10 @@ export async function fetchTodayDataForUser(
 
   try {
     const summaries = await fetchWakaTimeSummaries(accessToken, today, today);
-    const totalSeconds = calculateTotalSeconds(summaries.data || []);
+    const daySummary = (summaries.data || [])[0];
+    const stats = parseDailySummary(daySummary || {});
     
-    await storeDailyStats(env, userId, today, totalSeconds);
+    await storeDailyStats(env, userId, today, stats);
     await logFetch(env, userId, 'daily', today, 'success');
   } catch (error: any) {
     console.error('Error fetching today data:', error);
@@ -192,9 +194,10 @@ export async function fetchTodayDataForAllUsers(env: Env, forceRefresh = false):
         }
 
         const summaries = await fetchWakaTimeSummaries(accessToken, today, today);
-        const totalSeconds = calculateTotalSeconds(summaries.data || []);
+        const daySummary = (summaries.data || [])[0];
+        const stats = parseDailySummary(daySummary || {});
         
-        await storeDailyStats(env, user.id, today, totalSeconds);
+        await storeDailyStats(env, user.id, today, stats);
         await logFetch(env, user.id, 'daily', today, 'success');
       } catch (error: any) {
         console.error(`Error fetching today data for ${user.username}:`, error);
@@ -240,10 +243,10 @@ export async function fetchWeekDataForUser(
     if (summaries.data && Array.isArray(summaries.data)) {
       for (const daySummary of summaries.data) {
         const date = daySummary.range.date;
-        const totalSeconds = daySummary.grand_total?.total_seconds || 0;
+        const stats = parseDailySummary(daySummary);
         
         // Store in database (will update if already exists)
-        await storeDailyStats(env, userId, date, totalSeconds);
+        await storeDailyStats(env, userId, date, stats);
       }
       
       await logFetch(env, userId, 'weekly', endDate, 'success');
@@ -317,8 +320,8 @@ export async function fetchWeekDataForAllUsers(env: Env): Promise<void> {
         if (summaries.data && Array.isArray(summaries.data)) {
           await Promise.all(summaries.data.map(async (daySummary: any) => {
             const date = daySummary.range.date;
-            const totalSeconds = daySummary.grand_total?.total_seconds || 0;
-            await storeDailyStats(env, user.id, date, totalSeconds);
+            const stats = parseDailySummary(daySummary);
+            await storeDailyStats(env, user.id, date, stats);
           }));
           
           await logFetch(env, user.id, 'weekly', endDate, 'success');

@@ -1,4 +1,4 @@
-import { Env, User } from './types';
+import { Env, User, DailySummaryStats } from './types';
 
 /**
  * Database utilities for managing users and stats
@@ -89,17 +89,32 @@ export async function storeDailyStats(
   env: Env,
   userId: number,
   date: string,
-  totalSeconds: number
+  stats: DailySummaryStats
 ): Promise<void> {
   const now = Date.now();
 
   // Upsert daily stats
   await env.DB.prepare(`
-    INSERT INTO daily_stats (user_id, date, total_seconds, fetched_at)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO daily_stats (user_id, date, total_seconds, ai_seconds, human_seconds, ai_lines, human_lines, fetched_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(user_id, date) 
-    DO UPDATE SET total_seconds = ?, fetched_at = ?
-  `).bind(userId, date, totalSeconds, now, totalSeconds, now).run();
+    DO UPDATE SET total_seconds = ?, ai_seconds = ?, human_seconds = ?, ai_lines = ?, human_lines = ?, fetched_at = ?
+  `).bind(
+    userId,
+    date,
+    stats.total_seconds,
+    stats.ai_seconds,
+    stats.human_seconds,
+    stats.ai_lines,
+    stats.human_lines,
+    now,
+    stats.total_seconds,
+    stats.ai_seconds,
+    stats.human_seconds,
+    stats.ai_lines,
+    stats.human_lines,
+    now
+  ).run();
 }
 
 /**
@@ -117,7 +132,11 @@ export async function getLeaderboard(
       u.display_name,
       u.photo_url,
       u.is_admin,
-      COALESCE(SUM(ds.total_seconds), 0) as total_seconds
+      COALESCE(SUM(ds.total_seconds), 0) as total_seconds,
+      COALESCE(SUM(ds.ai_seconds), 0) as ai_seconds,
+      COALESCE(SUM(ds.human_seconds), 0) as human_seconds,
+      COALESCE(SUM(ds.ai_lines), 0) as ai_lines,
+      COALESCE(SUM(ds.human_lines), 0) as human_lines
     FROM users u
     LEFT JOIN daily_stats ds ON u.id = ds.user_id AND ds.date >= ? AND ds.date <= ?
     WHERE u.is_banned = 0
@@ -144,7 +163,11 @@ export async function getWeeklyData(env: Env, dates: string[]) {
       u.username,
       u.display_name,
       ds.date,
-      ds.total_seconds as seconds
+      ds.total_seconds as seconds,
+      ds.ai_seconds,
+      ds.human_seconds,
+      ds.ai_lines,
+      ds.human_lines
     FROM users u
     LEFT JOIN daily_stats ds ON u.id = ds.user_id AND ds.date IN (${placeholders})
     ORDER BY u.id, ds.date
@@ -166,11 +189,29 @@ export async function getWeeklyData(env: Env, dates: string[]) {
       userMap.get(row.user_id).daily_data.push({
         date: row.date,
         seconds: row.seconds || 0,
+        ai_seconds: row.ai_seconds || 0,
+        human_seconds: row.human_seconds || 0,
+        ai_lines: row.ai_lines || 0,
+        human_lines: row.human_lines || 0,
       });
     }
   });
 
   return Array.from(userMap.values());
+}
+
+/**
+ * Get the timestamp of the last successful data fetch
+ * Used to show "last synced" so users don't all hit Sync at once
+ */
+export async function getLastSyncTime(env: Env): Promise<number | null> {
+  const result = await env.DB.prepare(`
+    SELECT MAX(fetched_at) as last_synced
+    FROM fetch_log
+    WHERE status = 'success'
+  `).first<{ last_synced: number | null }>();
+
+  return result?.last_synced || null;
 }
 
 /**

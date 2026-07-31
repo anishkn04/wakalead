@@ -1,4 +1,4 @@
-import { Env, User } from './types';
+import { Env, User, DailySummaryStats } from './types';
 
 const WAKATIME_API_BASE = 'https://wakatime.com/api/v1';
 
@@ -87,12 +87,35 @@ export async function fetchWakaTimeSummaries(
 }
 
 /**
- * Helper to calculate total seconds from summary data
+ * Parse a single day's summary into total / AI / human stats.
+ *
+ * WakaTime tracks AI coding in two ways:
+ *  - The "ai coding" activity category (time spent with AI tools)
+ *  - Line changes attributed to GenAI vs old-school typing
+ *
+ * Human time = total time minus AI coding time, matching WakaTime's own
+ * "manual coding" definition.
  */
-export function calculateTotalSeconds(summaries: any[]): number {
-  return summaries.reduce((total, day) => {
-    return total + (day.grand_total?.total_seconds || 0);
-  }, 0);
+export function parseDailySummary(daySummary: any): DailySummaryStats {
+  const grandTotal = daySummary?.grand_total || {};
+  const totalSeconds = Math.round(grandTotal.total_seconds || 0);
+
+  const aiCodingCategory = (daySummary?.categories || []).find(
+    (category: any) => (category.name || '').toLowerCase() === 'ai coding'
+  );
+  const aiSeconds = Math.round(aiCodingCategory?.total_seconds || 0);
+
+  return {
+    total_seconds: totalSeconds,
+    ai_seconds: aiSeconds,
+    human_seconds: Math.max(0, totalSeconds - aiSeconds),
+    ai_lines:
+      Math.round(grandTotal.ai_additions || 0) +
+      Math.round(grandTotal.ai_deletions || 0),
+    human_lines:
+      Math.round(grandTotal.human_additions || 0) +
+      Math.round(grandTotal.human_deletions || 0),
+  };
 }
 
 /**

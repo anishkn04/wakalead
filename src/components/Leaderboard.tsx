@@ -1,38 +1,57 @@
 import { useState, useEffect, useMemo } from 'react';
-import { LeaderboardEntry, formatDuration } from '../api';
+import { LeaderboardEntry, Metric, getMetricValue, formatMetric, formatDuration } from '../api';
 import { Confetti } from './Confetti';
 import { useSound } from '../hooks/useSound';
 
 interface LeaderboardProps {
   title: string;
   entries: LeaderboardEntry[];
+  metric?: Metric;
   loading?: boolean;
 }
 
 /**
  * Leaderboard component - Clean, professional design with preserved roasts
  */
-export function Leaderboard({ title, entries, loading }: LeaderboardProps) {
+export function Leaderboard({ title, entries, metric = 'total', loading }: LeaderboardProps) {
   const [showConfetti, setShowConfetti] = useState(false);
   const [animatedEntries, setAnimatedEntries] = useState<number[]>([]);
   const { playSound } = useSound();
 
-  // Trigger confetti when there's a #1 with significant time
+  // Re-rank entries by the selected metric (e.g. Human, AI, AI Lines)
+  const rankedEntries = useMemo(() => {
+    return entries
+      .map((entry) => ({
+        ...entry,
+        metricValue: getMetricValue(entry, metric),
+      }))
+      .sort((a, b) => b.metricValue - a.metricValue)
+      .map((entry, index) => ({
+        ...entry,
+        rank: index + 1,
+      }));
+  }, [entries, metric]);
+
+  // Trigger confetti when there's a #1 with significant activity
   useEffect(() => {
-    if (entries.length > 0 && entries[0]?.total_seconds > 3600) {
-      const timer = setTimeout(() => {
-        setShowConfetti(true);
-        playSound('success');
-        setTimeout(() => setShowConfetti(false), 3500);
-      }, 500);
-      return () => clearTimeout(timer);
+    if (rankedEntries.length > 0) {
+      const topValue = rankedEntries[0]?.metricValue ?? 0;
+      const threshold = metric === 'lines' ? 500 : 3600;
+      if (topValue > threshold) {
+        const timer = setTimeout(() => {
+          setShowConfetti(true);
+          playSound('success');
+          setTimeout(() => setShowConfetti(false), 3500);
+        }, 500);
+        return () => clearTimeout(timer);
+      }
     }
-  }, [entries, playSound]);
+  }, [rankedEntries, metric, playSound]);
 
   // Staggered animation for entries
   useEffect(() => {
     setAnimatedEntries([]);
-    entries.forEach((entry, index) => {
+    rankedEntries.forEach((entry, index) => {
       setTimeout(() => {
         setAnimatedEntries(prev => [...prev, entry.user_id]);
         if (index < 3) {
@@ -40,7 +59,7 @@ export function Leaderboard({ title, entries, loading }: LeaderboardProps) {
         }
       }, index * 60);
     });
-  }, [entries, playSound]);
+  }, [rankedEntries, playSound]);
 
   // Helper function to randomly select a message from an array
   const randomMessage = (messages: string[]): string => {
@@ -230,12 +249,12 @@ export function Leaderboard({ title, entries, loading }: LeaderboardProps) {
   // Memoize status messages so they don't change on hover/re-render
   const statusMessages = useMemo(() => {
     const messages: Record<number, string> = {};
-    entries.forEach(entry => {
-      messages[entry.user_id] = getStatusMessage(entry.rank, entries.length, entry.total_seconds, entry.is_admin);
+    rankedEntries.forEach(entry => {
+      messages[entry.user_id] = getStatusMessage(entry.rank, rankedEntries.length, entry.total_seconds, entry.is_admin);
     });
     return messages;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entries]);
+  }, [rankedEntries]);
 
   // Get status badge style based on message type
   const getStatusStyle = (rank: number, totalSeconds: number): string => {
@@ -272,13 +291,13 @@ export function Leaderboard({ title, entries, loading }: LeaderboardProps) {
       {title && (
         <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
           {title}
-          {entries.length > 0 && (
+          {rankedEntries.length > 0 && (
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           )}
         </h2>
       )}
       
-      {entries.length === 0 ? (
+      {rankedEntries.length === 0 ? (
         <div className="text-center py-12">
           <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-zinc-800 flex items-center justify-center mx-auto mb-3">
             <svg className="w-6 h-6 text-slate-400 dark:text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -289,19 +308,22 @@ export function Leaderboard({ title, entries, loading }: LeaderboardProps) {
         </div>
       ) : (
         <div className="space-y-1">
-          {entries.map((entry) => {
-            const hasZeroTime = entry.total_seconds === 0;
+          {rankedEntries.map((entry) => {
+            const hasZeroValue = entry.metricValue === 0;
             const isAdmin = entry.is_admin === true;
             const isTop3 = entry.rank <= 3;
             const isAnimated = animatedEntries.includes(entry.user_id);
+            const maxValue = rankedEntries[0]?.metricValue || 1;
+            const humanPct = entry.total_seconds > 0 ? (entry.human_seconds / entry.total_seconds) * 100 : 0;
+            const aiPct = entry.total_seconds > 0 ? (entry.ai_seconds / entry.total_seconds) * 100 : 0;
             
             return (
               <div
                 key={entry.user_id}
                 className={`
                   flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl transition-all duration-200
-                  ${isTop3 && !hasZeroTime ? 'bg-slate-50 dark:bg-zinc-800/50' : 'hover:bg-slate-50 dark:hover:bg-zinc-800/30'}
-                  ${hasZeroTime ? 'opacity-50' : ''}
+                  ${isTop3 && !hasZeroValue ? 'bg-slate-50 dark:bg-zinc-800/50' : 'hover:bg-slate-50 dark:hover:bg-zinc-800/30'}
+                  ${hasZeroValue ? 'opacity-50' : ''}
                   ${isAnimated ? 'animate-fadeInUp' : 'opacity-0'}
                 `}
                 style={{ animationFillMode: 'forwards' }}
@@ -331,7 +353,7 @@ export function Leaderboard({ title, entries, loading }: LeaderboardProps) {
                     </div>
                   )}
                   {/* Online indicator for top 3 */}
-                  {isTop3 && entry.total_seconds > 0 && (
+                  {isTop3 && entry.metricValue > 0 && (
                     <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white dark:border-zinc-900" />
                   )}
                 </div>
@@ -358,9 +380,28 @@ export function Leaderboard({ title, entries, loading }: LeaderboardProps) {
                   <span className={`inline-block mt-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${getStatusStyle(entry.rank, entry.total_seconds)}`}>
                     {statusMessages[entry.user_id]}
                   </span>
+                  {/* AI vs Human split bar */}
+                  {entry.total_seconds > 0 && (
+                    <div className="mt-2 max-w-[220px]">
+                      <div className="flex h-1.5 rounded-full overflow-hidden bg-slate-200 dark:bg-zinc-700">
+                        <div className="bg-blue-500" style={{ width: `${humanPct}%` }} />
+                        <div className="bg-violet-500" style={{ width: `${aiPct}%` }} />
+                      </div>
+                      <div className="mt-1 flex items-center gap-3 text-[11px] text-slate-500 dark:text-zinc-500">
+                        <span className="flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-blue-500 inline-block flex-shrink-0" />
+                          <span className="tabular-nums">Human {formatDuration(entry.human_seconds)}</span>
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-violet-500 inline-block flex-shrink-0" />
+                          <span className="tabular-nums">AI {formatDuration(entry.ai_seconds)}</span>
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* Time */}
+                {/* Metric Value */}
                 <div className="text-right flex-shrink-0">
                   <p className={`font-semibold text-sm tabular-nums ${
                     entry.rank === 1 ? 'text-amber-700 dark:text-amber-400' :
@@ -368,10 +409,10 @@ export function Leaderboard({ title, entries, loading }: LeaderboardProps) {
                     entry.rank === 3 ? 'text-orange-600 dark:text-orange-400' :
                     'text-slate-700 dark:text-zinc-300'
                   }`}>
-                    {formatDuration(entry.total_seconds)}
+                    {formatMetric(entry.metricValue, metric)}
                   </p>
                   {/* Progress bar for top 3 */}
-                  {isTop3 && entries[0] && (
+                  {isTop3 && (
                     <div className="w-16 h-1 bg-slate-200 dark:bg-zinc-700 rounded-full mt-1.5 overflow-hidden">
                       <div 
                         className={`h-full rounded-full transition-all duration-700 ${
@@ -380,7 +421,7 @@ export function Leaderboard({ title, entries, loading }: LeaderboardProps) {
                           'bg-gradient-to-r from-orange-400 to-orange-500'
                         }`}
                         style={{ 
-                          width: `${Math.min(100, (entry.total_seconds / entries[0].total_seconds) * 100)}%`,
+                          width: `${Math.min(100, (entry.metricValue / maxValue) * 100)}%`,
                         }}
                       />
                     </div>

@@ -5,6 +5,7 @@ A modern, minimal web application for tracking and comparing WakaTime coding sta
 ## Features
 
 - 🏆 **Daily & Weekly Leaderboards** - See who's coding the most
+- 🤖 **AI vs Human Coding Breakdown** - Rank by total, human, or AI time and AI lines
 - 📊 **Weekly Performance Graph** - Visualize coding trends over 7 days
 - 🎨 **Dark/Light Mode** - Automatic theme switching with manual toggle
 - 🔐 **Secure Authentication** - OAuth via WakaTime

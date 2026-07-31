@@ -28,6 +28,10 @@ CREATE TABLE IF NOT EXISTS daily_stats (
     user_id INTEGER NOT NULL,
     date TEXT NOT NULL, -- Format: YYYY-MM-DD
     total_seconds INTEGER NOT NULL DEFAULT 0,
+    ai_seconds INTEGER NOT NULL DEFAULT 0,   -- time spent in the "ai coding" category
+    human_seconds INTEGER NOT NULL DEFAULT 0, -- total_seconds - ai_seconds
+    ai_lines INTEGER NOT NULL DEFAULT 0,      -- ai_additions + ai_deletions
+    human_lines INTEGER NOT NULL DEFAULT 0,   -- human_additions + human_deletions
     fetched_at INTEGER NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE(user_id, date)

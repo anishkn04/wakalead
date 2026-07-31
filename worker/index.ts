@@ -1,6 +1,6 @@
 import { Env } from './types';
 import { exchangeCodeForToken, fetchWakaTimeUser } from './wakatime';
-import { createOrUpdateUser, getLeaderboard, getWeeklyData, getAllUsers, deleteUser, banUser, unbanUser, getUserById } from './database';
+import { createOrUpdateUser, getLeaderboard, getWeeklyData, getAllUsers, deleteUser, banUser, unbanUser, getUserById, getLastSyncTime } from './database';
 import { createSession, verifySession, deleteSession, extractSessionId } from './session';
 import { fetchDataForAllUsers, fetchTodayDataForUser, fetchWeekDataForUser, fetchTodayDataForAllUsers, fetchWeekDataForAllUsers } from './fetcher';
 
@@ -214,10 +214,11 @@ export default {
         const weekEnd = dates[dates.length - 1]; // today
 
         // Fetch all data in parallel
-        const [todayLeaderboard, weekLeaderboard, weeklyData] = await Promise.all([
+        const [todayLeaderboard, weekLeaderboard, weeklyData, lastSynced] = await Promise.all([
           getLeaderboard(env, today, today),
           getLeaderboard(env, weekStart, weekEnd),
           getWeeklyData(env, dates),
+          getLastSyncTime(env),
         ]);
 
         return jsonResponse({
@@ -232,6 +233,7 @@ export default {
           today: todayLeaderboard,
           week: weekLeaderboard,
           weeklyData: { dates, users: weeklyData },
+          lastSynced,
         }, 200, 0); // No browser caching - always fetch fresh data
       }
 

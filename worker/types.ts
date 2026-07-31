@@ -32,7 +32,20 @@ export interface DailyStats {
   user_id: number;
   date: string;
   total_seconds: number;
+  ai_seconds: number;
+  human_seconds: number;
+  ai_lines: number;
+  human_lines: number;
   fetched_at: number;
+}
+
+/** Parsed per-day summary extracted from the WakaTime summaries API */
+export interface DailySummaryStats {
+  total_seconds: number;
+  ai_seconds: number;
+  human_seconds: number;
+  ai_lines: number;
+  human_lines: number;
 }
 
 export interface LeaderboardEntry {
@@ -41,6 +54,10 @@ export interface LeaderboardEntry {
   display_name: string | null;
   photo_url: string | null;
   total_seconds: number;
+  ai_seconds: number;
+  human_seconds: number;
+  ai_lines: number;
+  human_lines: number;
   rank: number;
 }
 
@@ -51,5 +68,9 @@ export interface WeeklyData {
   daily_data: {
     date: string;
     seconds: number;
+    ai_seconds: number;
+    human_seconds: number;
+    ai_lines: number;
+    human_lines: number;
   }[];
 }

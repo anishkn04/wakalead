@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, API_BASE, User, LeaderboardEntry, WeeklyData } from '../api';
+import { api, API_BASE, User, LeaderboardEntry, WeeklyData, Metric, METRICS, formatRelativeTime } from '../api';
 import { Header } from '../components/Header';
 import { Leaderboard } from '../components/Leaderboard';
 import { WeeklyChart } from '../components/WeeklyChart';
@@ -13,9 +13,11 @@ export function Dashboard() {
   const [todayLeaderboard, setTodayLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [weekLeaderboard, setWeekLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [weeklyData, setWeeklyData] = useState<WeeklyData | null>(null);
+  const [lastSynced, setLastSynced] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'today' | 'week'>('today');
+  const [metric, setMetric] = useState<Metric>('total');
 
   useEffect(() => {
     loadData();
@@ -36,6 +38,7 @@ export function Dashboard() {
       setTodayLeaderboard(data.today);
       setWeekLeaderboard(data.week);
       setWeeklyData(data.weeklyData);
+      setLastSynced(data.lastSynced);
     } catch (error: any) {
       console.error('Error loading data:', error);
     } finally {
@@ -157,6 +160,16 @@ export function Dashboard() {
           <div className="flex items-center gap-2 flex-wrap">
             {user && (
               <>
+                <div className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm text-slate-500 dark:text-zinc-400 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl" title={lastSynced ? `Last successful sync: ${new Date(lastSynced).toLocaleString()}` : 'No successful sync yet'}>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="hidden sm:inline">Last synced:</span>
+                  <span className="font-medium text-slate-700 dark:text-zinc-300">
+                    {lastSynced ? formatRelativeTime(lastSynced) : 'never'}
+                  </span>
+                </div>
+
                 <button
                   onClick={() => loadData(true)}
                   disabled={refreshing}
@@ -207,34 +220,58 @@ export function Dashboard() {
 
         {/* Leaderboard Card */}
         <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-sm overflow-hidden mb-6">
-          {/* Tabs */}
-          <div className="flex border-b border-slate-200 dark:border-zinc-800">
-            <button
-              onClick={() => setActiveTab('today')}
-              className={`flex-1 px-6 py-4 text-sm font-medium transition-colors relative ${
-                activeTab === 'today'
-                  ? 'text-blue-600 dark:text-blue-400'
-                  : 'text-slate-500 dark:text-zinc-500 hover:text-slate-700 dark:hover:text-zinc-300'
-              }`}
-            >
-              Today
-              {activeTab === 'today' && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400" />
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab('week')}
-              className={`flex-1 px-6 py-4 text-sm font-medium transition-colors relative ${
-                activeTab === 'week'
-                  ? 'text-blue-600 dark:text-blue-400'
-                  : 'text-slate-500 dark:text-zinc-500 hover:text-slate-700 dark:hover:text-zinc-300'
-              }`}
-            >
-              This Week
-              {activeTab === 'week' && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400" />
-              )}
-            </button>
+          {/* Tabs + Metric Selector */}
+          <div className="flex flex-col sm:flex-row sm:items-center border-b border-slate-200 dark:border-zinc-800">
+            <div className="flex flex-1">
+              <button
+                onClick={() => setActiveTab('today')}
+                className={`flex-1 px-6 py-4 text-sm font-medium transition-colors relative ${
+                  activeTab === 'today'
+                    ? 'text-blue-600 dark:text-blue-400'
+                    : 'text-slate-500 dark:text-zinc-500 hover:text-slate-700 dark:hover:text-zinc-300'
+                }`}
+              >
+                Today
+                {activeTab === 'today' && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400" />
+                )}
+              </button>
+              <button
+                onClick={() => setActiveTab('week')}
+                className={`flex-1 px-6 py-4 text-sm font-medium transition-colors relative ${
+                  activeTab === 'week'
+                    ? 'text-blue-600 dark:text-blue-400'
+                    : 'text-slate-500 dark:text-zinc-500 hover:text-slate-700 dark:hover:text-zinc-300'
+                }`}
+              >
+                This Week
+                {activeTab === 'week' && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400" />
+                )}
+              </button>
+            </div>
+
+            {/* Metric selector */}
+            <div className="flex items-center gap-0.5 p-2 sm:pr-4 border-t sm:border-t-0 border-slate-200 dark:border-zinc-800">
+              <span className="hidden md:inline text-xs font-medium text-slate-400 dark:text-zinc-600 mr-2">
+                Rank by
+              </span>
+              <div className="inline-flex rounded-lg bg-slate-100 dark:bg-zinc-800 p-0.5">
+                {METRICS.map((m) => (
+                  <button
+                    key={m.value}
+                    onClick={() => setMetric(m.value)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                      metric === m.value
+                        ? 'bg-white dark:bg-zinc-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                        : 'text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200'
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
           
           {/* Content */}
@@ -242,6 +279,7 @@ export function Dashboard() {
             <Leaderboard
               title=""
               entries={activeTab === 'today' ? todayLeaderboard : weekLeaderboard}
+              metric={metric}
               loading={loading}
             />
           </div>
@@ -249,7 +287,7 @@ export function Dashboard() {
 
         {/* Weekly Chart */}
         <div className="mb-6">
-          <WeeklyChart data={weeklyData} loading={loading} />
+          <WeeklyChart data={weeklyData} metric={metric} onMetricChange={setMetric} loading={loading} />
         </div>
 
         {/* Admin Panel */}

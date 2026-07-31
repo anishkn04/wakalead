@@ -18,9 +18,24 @@ export interface LeaderboardEntry {
   display_name: string | null;
   photo_url: string | null;
   total_seconds: number;
+  ai_seconds: number;
+  human_seconds: number;
+  ai_lines: number;
+  human_lines: number;
   rank: number;
   is_admin?: boolean;
 }
+
+/** Metric used to rank / display coding activity */
+export type Metric = 'total' | 'human' | 'ai' | 'lines';
+
+/** Labeled metric options for UI controls */
+export const METRICS: { value: Metric; label: string }[] = [
+  { value: 'total', label: 'All' },
+  { value: 'human', label: 'Human' },
+  { value: 'ai', label: 'AI' },
+  { value: 'lines', label: 'AI Lines' },
+];
 
 export interface WeeklyData {
   dates: string[];
@@ -31,6 +46,10 @@ export interface WeeklyData {
     daily_data: {
       date: string;
       seconds: number;
+      ai_seconds: number;
+      human_seconds: number;
+      ai_lines: number;
+      human_lines: number;
     }[];
   }[];
 }
@@ -108,6 +127,7 @@ class ApiClient {
     today: LeaderboardEntry[];
     week: LeaderboardEntry[];
     weeklyData: WeeklyData;
+    lastSynced: number | null;
   }> {
     return this.request('/dashboard');
   }
@@ -142,16 +162,65 @@ export const api = new ApiClient();
 
 // Utility functions
 export function formatDuration(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  
+  const rounded = Math.max(0, Math.round(seconds));
+  const hours = Math.floor(rounded / 3600);
+  const minutes = Math.floor((rounded % 3600) / 60);
+
   if (hours > 0) {
     return `${hours}h ${minutes}m`;
   }
-  return `${minutes}m`;
+  if (minutes > 0) {
+    return `${minutes}m`;
+  }
+  return `${rounded}s`;
+}
+
+export function formatLines(lines: number): string {
+  const value = Math.max(0, Math.round(lines));
+  if (value >= 1000) {
+    const k = (value / 1000).toFixed(value % 1000 === 0 ? 0 : 1);
+    return `${k}k`;
+  }
+  return `${value}`;
+}
+
+/** Get the value for a given metric from a leaderboard entry */
+export function getMetricValue(entry: LeaderboardEntry, metric: Metric): number {
+  switch (metric) {
+    case 'human':
+      return entry.human_seconds;
+    case 'ai':
+      return entry.ai_seconds;
+    case 'lines':
+      return entry.ai_lines;
+    case 'total':
+    default:
+      return entry.total_seconds;
+  }
+}
+
+/** Format a metric value with the right unit */
+export function formatMetric(value: number, metric: Metric): string {
+  if (metric === 'lines') {
+    return formatLines(value);
+  }
+  return formatDuration(value);
 }
 
 export function formatDate(dateString: string): string {
   const date = new Date(dateString);
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+export function formatRelativeTime(timestamp: number): string {
+  const diff = Date.now() - timestamp;
+  const seconds = Math.max(0, Math.floor(diff / 1000));
+
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
 }
