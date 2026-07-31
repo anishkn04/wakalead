@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { LeaderboardEntry, TooltipStats, formatDuration, formatLines } from '../api';
 
@@ -7,13 +7,15 @@ interface UserTooltipProps {
   stats: TooltipStats | null;
   loading: boolean;
   error: string | null;
-  anchorRect: DOMRect;
+  anchorRef: RefObject<HTMLDivElement | null>;
+  initialPoint: { x: number; y: number } | null;
   onCardEnter: () => void;
   onCardLeave: () => void;
 }
 
 const WIDTH = 332;
 const MARGIN = 12;
+const OFFSET = 16;
 
 /** Deterministic hue from a username so each user gets a stable accent tint. */
 function hashHue(str: string): number {
@@ -198,23 +200,73 @@ function Skeleton() {
 
 /**
  * Enka.network-style hover card showing a user's overall WakaTime stats.
- * Always dark-glass so it pops on top of both app themes.
+ * Always dark-glass so it pops on top of both app themes. Follows the pointer
+ * inside the hovered row (keqingmains-style), flipping sides near the edges.
  */
-export function UserTooltip({ entry, stats, loading, error, anchorRect, onCardEnter, onCardLeave }: UserTooltipProps) {
+export function UserTooltip({ entry, stats, loading, error, anchorRef, initialPoint, onCardEnter, onCardLeave }: UserTooltipProps) {
   const hue = useMemo(() => hashHue(entry.username || String(entry.user_id)), [entry.username, entry.user_id]);
 
+  // Pointer position inside the hovered row (rAF-throttled)
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const pendingPoint = useRef<{ x: number; y: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const el = anchorRef.current;
+    if (!el) return;
+
+    // Start where the pointer entered the row, then follow it on move
+    const rect = el.getBoundingClientRect();
+    setPos(
+      initialPoint ?? { x: rect.right, y: rect.top + rect.height / 2 }
+    );
+
+    const onMove = (e: MouseEvent) => {
+      pendingPoint.current = { x: e.clientX, y: e.clientY };
+      if (rafRef.current != null) return;
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        setPos(pendingPoint.current);
+      });
+    };
+    const onLeave = () => {
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+
+    el.addEventListener('mousemove', onMove);
+    el.addEventListener('pointerleave', onLeave);
+    return () => {
+      el.removeEventListener('mousemove', onMove);
+      el.removeEventListener('pointerleave', onLeave);
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    };
+    // anchorRef.current changes when the hovered row switches, but the ref
+    // object stays the same - key off the user so the listeners re-attach
+    // and the card reseeds at the new row's pointer position.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anchorRef, entry.user_id]);
+
   const position = useMemo(() => {
+    if (!pos) return null;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    const rightSpace = vw - anchorRect.right - MARGIN;
-    const leftSpace = anchorRect.left - MARGIN;
-    const left =
-      rightSpace >= WIDTH || rightSpace >= leftSpace
-        ? anchorRect.right + MARGIN
-        : Math.max(MARGIN, anchorRect.left - WIDTH - MARGIN);
-    const top = Math.max(MARGIN, Math.min(anchorRect.top, vh - MARGIN - 260));
+
+    // Prefer the right of the pointer; flip to the left when out of room
+    let left = pos.x + OFFSET;
+    if (left + WIDTH > vw - MARGIN) {
+      left = pos.x - OFFSET - WIDTH;
+    }
+    left = Math.max(MARGIN, Math.min(left, vw - MARGIN - WIDTH));
+
+    // Slightly below the pointer, clamped so the card stays on screen
+    let top = pos.y + 10;
+    top = Math.max(MARGIN, Math.min(top, vh - MARGIN - 260));
+
     return { left, top, maxHeight: vh - MARGIN * 2 };
-  }, [anchorRect]);
+  }, [pos]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -223,6 +275,8 @@ export function UserTooltip({ entry, stats, loading, error, anchorRect, onCardEn
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onCardLeave]);
+
+  if (!position) return null;
 
   const meta = rankMeta(entry.rank);
 

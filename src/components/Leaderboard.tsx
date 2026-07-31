@@ -32,10 +32,12 @@ export function Leaderboard({ title, entries, metric = 'total', loading }: Leade
   const { playSound } = useSound();
 
   // Hover card state (enka-style user stats tooltip)
-  const [hovered, setHovered] = useState<{ entry: LeaderboardEntry; rect: DOMRect } | null>(null);
+  const [hovered, setHovered] = useState<LeaderboardEntry | null>(null);
   const [hoverStats, setHoverStats] = useState<TooltipStats | null>(null);
   const [hoverLoading, setHoverLoading] = useState(false);
   const [hoverError, setHoverError] = useState<string | null>(null);
+  const hoverRowRef = useRef<HTMLDivElement | null>(null);
+  const enterPointRef = useRef<{ x: number; y: number } | null>(null);
   const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -55,9 +57,10 @@ export function Leaderboard({ title, entries, metric = 'total', loading }: Leade
   const handleMouseEnter = (entry: LeaderboardEntry, e: ReactMouseEvent<HTMLDivElement>) => {
     clearOpenTimer();
     clearCloseTimer();
-    const rect = e.currentTarget.getBoundingClientRect();
+    hoverRowRef.current = e.currentTarget;
+    enterPointRef.current = { x: e.clientX, y: e.clientY };
     openTimer.current = setTimeout(() => {
-      setHovered({ entry, rect });
+      setHovered(entry);
       setHoverLoading(true);
       setHoverError(null);
       setHoverStats(null);
@@ -376,11 +379,12 @@ export function Leaderboard({ title, entries, metric = 'total', loading }: Leade
       {/* Enka-style hover card */}
       {hovered && (
         <UserTooltip
-          entry={hovered.entry}
+          entry={hovered}
           stats={hoverStats}
           loading={hoverLoading}
           error={hoverError}
-          anchorRect={hovered.rect}
+          anchorRef={hoverRowRef}
+          initialPoint={enterPointRef.current}
           onCardEnter={keepOpen}
           onCardLeave={scheduleClose}
         />
