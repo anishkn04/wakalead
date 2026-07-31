@@ -1,28 +1,5 @@
-import { useRef } from 'react';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  ChartOptions,
-} from 'chart.js';
-import { Line } from 'react-chartjs-2';
-import { WeeklyData, Metric, METRICS, formatDate } from '../api';
-import { useTheme } from '../ThemeContext';
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend
-);
+import { useMemo } from 'react';
+import { WeeklyData, Metric, METRICS, formatDuration, formatLines, formatMetric } from '../api';
 
 interface WeeklyChartProps {
   data: WeeklyData | null;
@@ -31,28 +8,72 @@ interface WeeklyChartProps {
   loading?: boolean;
 }
 
+/** RGB triplets for the heatmap accent per metric */
+const ACCENTS: Record<Metric, string> = {
+  total: '59, 130, 246',
+  human: '16, 185, 129',
+  ai: '139, 92, 246',
+  lines: '244, 63, 94',
+};
+
+function metricValue(
+  d: WeeklyData['users'][number]['daily_data'][number],
+  metric: Metric
+): number {
+  switch (metric) {
+    case 'human':
+      return d.human_seconds;
+    case 'ai':
+      return d.ai_seconds;
+    case 'lines':
+      return d.ai_lines;
+    case 'total':
+    default:
+      return d.seconds;
+  }
+}
+
+/** Compact per-day value label (e.g. "3.4h", "42m", "1.2k"). */
+function formatCompact(value: number, metric: Metric): string {
+  if (metric === 'lines') return formatLines(value);
+  if (value >= 3600) return `${(value / 3600).toFixed(1)}h`;
+  if (value >= 60) return `${Math.round(value / 60)}m`;
+  return `${Math.round(value)}s`;
+}
+
+function hashHue(str: string): number {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+  return h % 360;
+}
+
 /**
- * Weekly performance chart - displays 7-day coding activity trends
- * Each user gets a unique colored line. Metric toggle switches
- * between total / human / AI time and AI lines.
+ * Weekly performance heatmap - a contribution-grid style view of the last
+ * 7 days. Rows are users ranked by their weekly total for the selected
+ * metric; columns are days; cells are shaded by that day's value.
  */
 export function WeeklyChart({ data, metric = 'total', onMetricChange, loading }: WeeklyChartProps) {
-  const chartRef = useRef<any>(null);
-  const { theme } = useTheme();
-  const isDark = theme === 'dark';
-  const isLines = metric === 'lines';
+  const accent = ACCENTS[metric];
 
-  // Generate distinct colors for each user
-  const colors = [
-    'rgb(59, 130, 246)',   // blue
-    'rgb(168, 85, 247)',   // purple
-    'rgb(236, 72, 153)',   // pink
-    'rgb(34, 197, 94)',    // green
-    'rgb(251, 146, 60)',   // orange
-    'rgb(14, 165, 233)',   // sky
-    'rgb(234, 179, 8)',    // yellow
-    'rgb(239, 68, 68)',    // red
-  ];
+  const rows = useMemo(() => {
+    if (!data) return [];
+    const mapped = data.users.map((user) => {
+      const byDate = new Map(user.daily_data.map((d) => [d.date, d]));
+      const values = data.dates.map((date) => byDate.get(date) ?? null);
+      const weekTotal = values.reduce((sum, d) => sum + (d ? metricValue(d, metric) : 0), 0);
+      return { user, values, weekTotal };
+    });
+    return mapped.sort((a, b) => b.weekTotal - a.weekTotal);
+  }, [data, metric]);
+
+  const max = useMemo(
+    () =>
+      Math.max(
+        1,
+        ...rows.flatMap((r) => r.values.map((d) => (d ? metricValue(d, metric) : 0)))
+      ),
+    [rows, metric]
+  );
 
   if (loading || !data) {
     return (
@@ -86,116 +107,6 @@ export function WeeklyChart({ data, metric = 'total', onMetricChange, loading }:
     );
   }
 
-  // Convert stored value into chart units (seconds -> hours for time metrics)
-  const toChartValue = (value: number) => (isLines ? value : value / 3600);
-
-  // Prepare chart data
-  const chartData = {
-    labels: data.dates.map(formatDate),
-    datasets: data.users.map((user, index) => {
-      // Create a map of date -> value for quick lookup
-      const dataMap = new Map(
-        user.daily_data.map(d => [
-          d.date,
-          toChartValue(
-            metric === 'total' ? d.seconds :
-            metric === 'human' ? d.human_seconds :
-            metric === 'ai' ? d.ai_seconds :
-            d.ai_lines
-          ),
-        ])
-      );
-
-      // Fill in data for all dates (use 0 if no data)
-      const values = data.dates.map(date => dataMap.get(date) || 0);
-
-      const color = colors[index % colors.length];
-
-      return {
-        label: user.display_name || user.username,
-        data: values,
-        borderColor: color,
-        backgroundColor: color.replace('rgb', 'rgba').replace(')', ', 0.1)'),
-        tension: 0.3,
-        pointRadius: 4,
-        pointHoverRadius: 6,
-      };
-    }),
-  };
-
-  const options: ChartOptions<'line'> = {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: {
-      mode: 'index',
-      intersect: false,
-    },
-    plugins: {
-      legend: {
-        position: 'top',
-        labels: {
-          color: isDark ? 'rgb(161, 161, 170)' : 'rgb(71, 85, 105)',
-          usePointStyle: true,
-          padding: 12,
-          font: {
-            size: window.innerWidth < 640 ? 10 : 12,
-            weight: 500,
-          },
-        },
-      },
-      tooltip: {
-        callbacks: {
-          label: (context) => {
-            const label = context.dataset.label || '';
-            const value = context.parsed.y ?? 0;
-            return `${label}: ${isLines ? Math.round(value) : value.toFixed(1)}${isLines ? ' lines' : 'h'}`;
-          },
-          beforeBody: (tooltipItems) => {
-            // Sort tooltip items by value in descending order
-            tooltipItems.sort((a, b) => {
-              const aValue = a.parsed.y ?? 0;
-              const bValue = b.parsed.y ?? 0;
-              return bValue - aValue;
-            });
-            return [];
-          },
-        },
-        itemSort: (a, b) => {
-          // Sort by value descending (highest first)
-          return (b.parsed.y ?? 0) - (a.parsed.y ?? 0);
-        },
-      },
-    },
-    scales: {
-      y: {
-        beginAtZero: true,
-        ticks: {
-          callback: (value) => (isLines ? `${value}` : `${value}h`),
-          color: isDark ? 'rgb(161, 161, 170)' : 'rgb(71, 85, 105)',
-          font: {
-            size: window.innerWidth < 640 ? 9 : 11,
-          },
-        },
-        grid: {
-          color: isDark ? 'rgba(63, 63, 70, 0.5)' : 'rgba(226, 232, 240, 0.8)',
-        },
-      },
-      x: {
-        ticks: {
-          color: isDark ? 'rgb(161, 161, 170)' : 'rgb(71, 85, 105)',
-          font: {
-            size: window.innerWidth < 640 ? 9 : 11,
-          },
-          maxRotation: window.innerWidth < 640 ? 45 : 0,
-          minRotation: window.innerWidth < 640 ? 45 : 0,
-        },
-        grid: {
-          display: false,
-        },
-      },
-    },
-  };
-
   return (
     <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 p-4 sm:p-6">
       <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
@@ -218,8 +129,97 @@ export function WeeklyChart({ data, metric = 'total', onMetricChange, loading }:
           ))}
         </div>
       </div>
-      <div className="h-64 sm:h-72">
-        <Line ref={chartRef} data={chartData} options={options} />
+
+      <div className="overflow-x-auto">
+        <div className="min-w-[560px]">
+          {/* Column headers */}
+          <div className="grid gap-1.5 pb-1.5" style={{ gridTemplateColumns: '150px repeat(7, 1fr)' }}>
+            <div />
+            {data.dates.map((date, i) => {
+              const dt = new Date(date + 'T00:00:00');
+              return (
+                <div key={i} className="text-center">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                    {dt.toLocaleDateString('en-US', { weekday: 'short' })}
+                  </p>
+                  <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 tabular-nums">
+                    {Number(date.slice(8, 10))}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* User rows */}
+          <div className="space-y-1.5">
+            {rows.map(({ user, values, weekTotal }) => {
+              const name = user.display_name || user.username;
+              return (
+                <div
+                  key={user.user_id}
+                  className="grid gap-1.5"
+                  style={{ gridTemplateColumns: '150px repeat(7, 1fr)' }}
+                >
+                  <div className="flex items-center gap-2 pr-2 min-w-0">
+                    {user.photo_url ? (
+                      <img
+                        src={user.photo_url}
+                        alt={user.username}
+                        className="w-6 h-6 rounded-full object-cover flex-shrink-0"
+                        draggable={false}
+                      />
+                    ) : (
+                      <span
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
+                        style={{ background: `hsl(${hashHue(user.username || String(user.user_id))} 60% 45%)` }}
+                      >
+                        {name.charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                    <span className="truncate text-sm font-medium text-slate-800 dark:text-white" title={user.username}>
+                      {name}
+                    </span>
+                    <span className="ml-auto text-xs font-semibold tabular-nums text-slate-500 dark:text-zinc-400">
+                      {formatMetric(weekTotal, metric)}
+                    </span>
+                  </div>
+
+                  {values.map((d, i) => {
+                    const v = d ? metricValue(d, metric) : 0;
+                    const alpha = v / max;
+                    const light = alpha > 0.45;
+                    return (
+                      <div
+                        key={i}
+                        title={
+                          d
+                            ? `${name}: ${formatDuration(d.seconds)}${d.ai_seconds > 0 ? ` · AI ${formatDuration(d.ai_seconds)}` : ''}`
+                            : `${name}: no activity`
+                        }
+                        className={`flex items-center justify-center rounded-md h-9 text-[11px] font-medium tabular-nums transition-colors ${
+                          v > 0 ? (light ? 'text-white' : 'text-slate-700 dark:text-zinc-300') : 'bg-slate-100 dark:bg-white/[0.03] text-slate-400 dark:text-zinc-600'
+                        }`}
+                        style={v > 0 ? { background: `rgba(${accent}, ${(0.1 + alpha * 0.8).toFixed(3)})` } : undefined}
+                      >
+                        {v > 0 ? formatCompact(v, metric) : ''}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Intensity legend */}
+          <div className="mt-4 flex items-center justify-end gap-2 text-[10px] text-slate-400 dark:text-zinc-500">
+            <span>Less</span>
+            <div
+              className="w-24 h-2 rounded-full"
+              style={{ background: `linear-gradient(to right, rgba(${accent}, 0.1), rgba(${accent}, 0.9))` }}
+            />
+            <span>More</span>
+          </div>
+        </div>
       </div>
     </div>
   );

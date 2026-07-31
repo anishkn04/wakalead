@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { LeaderboardEntry, TooltipStats, formatDuration, formatLines } from '../api';
+import { getLanguageIcon, languageHue } from '../languageIcons';
 
 interface UserTooltipProps {
   entry: LeaderboardEntry;
@@ -13,7 +14,7 @@ interface UserTooltipProps {
   onCardLeave: () => void;
 }
 
-const WIDTH = 332;
+const WIDTH = 580;
 const MARGIN = 12;
 const OFFSET = 16;
 
@@ -50,90 +51,116 @@ function deltaInfo(delta: number | null, today: number, yesterday: number) {
   return { text: '= 0%', cls: 'text-white/50' };
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Block({
+  title,
+  children,
+  className = '',
+}: {
+  title?: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="px-4 py-3.5 border-t border-white/[0.07]">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40 mb-2.5">
-        {title}
-      </p>
+    <div className={`px-4 py-2.5 ${className}`}>
+      {title && (
+        <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-white/40 mb-1.5">
+          {title}
+        </p>
+      )}
       {children}
     </div>
   );
 }
 
-function StatCell({ label, children, align = 'left' }: { label: string; children: React.ReactNode; align?: 'left' | 'right' }) {
+function StatCell({
+  label,
+  children,
+  align = 'left',
+}: {
+  label: string;
+  children: React.ReactNode;
+  align?: 'left' | 'right';
+}) {
   return (
     <div className={align === 'right' ? 'text-right' : ''}>
-      <p className="text-[10px] font-medium text-white/40">{label}</p>
-      <div className="mt-0.5 text-sm font-semibold text-white tabular-nums">{children}</div>
+      <p className="text-[9px] font-medium text-white/40">{label}</p>
+      <div className="mt-0.5 text-[13px] font-semibold text-white tabular-nums">{children}</div>
     </div>
   );
 }
 
-function BarRow({
-  name,
-  value,
-  percent,
-  gradient,
-}: {
-  name: string;
-  value: string;
-  percent: number;
-  gradient: string;
-}) {
+function LanguageTile({ name, percent }: { name: string; percent: number }) {
+  const icon = getLanguageIcon(name);
+  const hue = languageHue(name);
   return (
-    <div className="mb-2 last:mb-0">
-      <div className="flex items-center justify-between text-xs mb-1">
-        <span className="text-white/85 font-medium truncate mr-2">{name}</span>
-        <span className="text-white/45 tabular-nums flex-shrink-0 ml-auto pl-2">{value}</span>
-      </div>
-      <div className="h-1.5 rounded-full bg-white/[0.07] overflow-hidden">
-        <div
-          className={`h-full rounded-full ${gradient}`}
-          style={{ width: `${Math.max(2, Math.min(100, percent))}%` }}
-        />
-      </div>
+    <div
+      className="flex flex-col items-center justify-center gap-1 rounded-lg bg-white/[0.04] border border-white/[0.06] px-1 py-2 min-w-0"
+      title={`${name} · ${percent}%`}
+    >
+      {icon ? (
+        <img src={icon} alt={name} className="w-5 h-5 flex-shrink-0" draggable={false} />
+      ) : (
+        <span
+          className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white/80 flex-shrink-0"
+          style={{ background: `hsl(${hue} 55% 38%)` }}
+        >
+          {name.charAt(0).toUpperCase()}
+        </span>
+      )}
+      <span className="w-full text-[9px] text-white/80 truncate text-center">{name}</span>
+      <span className="text-[9px] text-white/40 tabular-nums">{percent}%</span>
     </div>
   );
 }
 
-function BreakdownSection({
-  title,
+function StackCol({
+  accent,
+  label,
   items,
-  gradient,
 }: {
-  title: string;
-  items: { name: string; seconds: number; percent: number }[];
-  gradient: string;
+  accent: string;
+  label: string;
+  items: { name: string; percent: number }[];
 }) {
-  if (!items || items.length === 0) return null;
   return (
-    <Section title={title}>
-      {items.slice(0, 5).map((item) => (
-        <BarRow
-          key={item.name}
-          name={item.name}
-          value={`${formatDuration(item.seconds)} · ${item.percent}%`}
-          percent={item.percent}
-          gradient={gradient}
-        />
-      ))}
-    </Section>
+    <div className="min-w-0">
+      <p className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-white/40 mb-1">
+        <span className={`w-1.5 h-1.5 rounded-full ${accent}`} />
+        {label}
+      </p>
+      {items.length === 0 ? (
+        <p className="text-[10px] text-white/30">—</p>
+      ) : (
+        items.map((it) => (
+          <div
+            key={it.name}
+            className="flex items-center justify-between gap-1 text-[10px] py-0.5"
+            title={`${it.name} · ${it.percent}%`}
+          >
+            <span className="text-white/80 truncate min-w-0">{it.name}</span>
+            <span className="text-white/40 tabular-nums flex-shrink-0">{it.percent}%</span>
+          </div>
+        ))
+      )}
+    </div>
   );
 }
 
-function Sparkline({ data }: { data: { date: string; seconds: number }[] }) {
+function Sparkline({
+  data,
+  height = 56,
+}: {
+  data: { date: string; seconds: number }[];
+  height?: number;
+}) {
   const values = data.map((d) => d.seconds);
   const max = Math.max(...values, 1);
   const W = 296;
-  const H = 56;
+  const H = height;
   const P = 6;
   const step = (W - P * 2) / (values.length - 1 || 1);
 
-  const pts = values.map((v, i) => [
-    P + i * step,
-    H - P - (v / max) * (H - P * 2),
-  ]);
+  const pts = values.map((v, i) => [P + i * step, H - P - (v / max) * (H - P * 2)]);
 
   const line = pts
     .map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`)
@@ -172,7 +199,7 @@ function Sparkline({ data }: { data: { date: string; seconds: number }[] }) {
           <line x1={P} y1={H - P} x2={W - P} y2={H - P} stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" strokeDasharray="4 4" />
         )}
       </svg>
-      <div className="mt-1.5 flex justify-between text-[9px] text-white/35 tabular-nums">
+      <div className="mt-1 flex justify-between text-[8px] text-white/35 tabular-nums">
         {data.map((d, i) => (
           <span key={i}>
             {d.date === new Date().toISOString().slice(0, 10)
@@ -187,11 +214,15 @@ function Sparkline({ data }: { data: { date: string; seconds: number }[] }) {
 
 function Skeleton() {
   return (
-    <div className="w-[332px] overflow-hidden rounded-2xl border border-white/10 bg-[#101014] shadow-2xl">
-      <div className="h-28 bg-zinc-800/60 animate-shimmer" />
-      <div className="p-4 space-y-3">
+    <div className="w-[580px] max-w-[94vw] overflow-hidden rounded-2xl border border-white/10 bg-[#101014] shadow-2xl">
+      <div className="h-24 bg-zinc-800/60 animate-shimmer" />
+      <div className="grid grid-cols-2 divide-x divide-white/[0.06] p-4 gap-4">
         {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="h-3 rounded bg-zinc-800/80 animate-shimmer" style={{ width: `${90 - i * 18}%` }} />
+          <div key={i} className="space-y-3">
+            <div className="h-3 rounded bg-zinc-800/80 animate-shimmer" style={{ width: `${90 - i * 18}%` }} />
+            <div className="h-3 rounded bg-zinc-800/80 animate-shimmer" style={{ width: `${70 - i * 14}%` }} />
+            <div className="h-3 rounded bg-zinc-800/80 animate-shimmer" style={{ width: `${80 - i * 16}%` }} />
+          </div>
         ))}
       </div>
     </div>
@@ -202,6 +233,7 @@ function Skeleton() {
  * Enka.network-style hover card showing a user's overall WakaTime stats.
  * Always dark-glass so it pops on top of both app themes. Follows the pointer
  * inside the hovered row (keqingmains-style), flipping sides near the edges.
+ * Compact 2-column layout so it fits on screen without scrolling.
  */
 export function UserTooltip({ entry, stats, loading, error, anchorRef, initialPoint, onCardEnter, onCardLeave }: UserTooltipProps) {
   const hue = useMemo(() => hashHue(entry.username || String(entry.user_id)), [entry.username, entry.user_id]);
@@ -217,9 +249,7 @@ export function UserTooltip({ entry, stats, loading, error, anchorRef, initialPo
 
     // Start where the pointer entered the row, then follow it on move
     const rect = el.getBoundingClientRect();
-    setPos(
-      initialPoint ?? { x: rect.right, y: rect.top + rect.height / 2 }
-    );
+    setPos(initialPoint ?? { x: rect.right, y: rect.top + rect.height / 2 });
 
     const onMove = (e: MouseEvent) => {
       pendingPoint.current = { x: e.clientX, y: e.clientY };
@@ -262,8 +292,7 @@ export function UserTooltip({ entry, stats, loading, error, anchorRef, initialPo
     left = Math.max(MARGIN, Math.min(left, vw - MARGIN - WIDTH));
 
     // Slightly below the pointer, clamped so the card stays on screen
-    let top = pos.y + 10;
-    top = Math.max(MARGIN, Math.min(top, vh - MARGIN - 260));
+    const top = Math.max(MARGIN, Math.min(pos.y + 10, vh - MARGIN - 140));
 
     return { left, top, maxHeight: vh - MARGIN * 2 };
   }, [pos]);
@@ -279,11 +308,20 @@ export function UserTooltip({ entry, stats, loading, error, anchorRef, initialPo
   if (!position) return null;
 
   const meta = rankMeta(entry.rank);
+  const total = stats?.aggregates.total_seconds ?? 0;
+  const humanPct = total > 0 ? Math.round(((stats?.aggregates.human_seconds ?? 0) / total) * 100) : 0;
+  const aiPct = total > 0 ? Math.round(((stats?.aggregates.ai_seconds ?? 0) / total) * 100) : 0;
+  const hasAiTokens = (stats?.ai_tokens.input ?? 0) > 0 || (stats?.ai_tokens.output ?? 0) > 0 || (stats?.ai_tokens.sessions ?? 0) > 0;
+  const isEmpty =
+    stats != null &&
+    total === 0 &&
+    stats.languages.length === 0 &&
+    stats.ai_models.length === 0;
 
   return createPortal(
     <div
       role="tooltip"
-      className="fixed z-[999] w-[332px] overflow-hidden rounded-2xl border border-white/10 bg-[#101014]/95 backdrop-blur-xl shadow-[0_24px_60px_-12px_rgba(0,0,0,0.7)] animate-scaleIn"
+      className="fixed z-[999] w-[580px] max-w-[94vw] overflow-hidden rounded-2xl border border-white/10 bg-[#101014]/95 backdrop-blur-xl shadow-[0_24px_60px_-12px_rgba(0,0,0,0.7)] animate-scaleIn"
       style={{ left: position.left, top: position.top, maxHeight: position.maxHeight }}
       onMouseEnter={onCardEnter}
       onMouseLeave={onCardLeave}
@@ -298,178 +336,208 @@ export function UserTooltip({ entry, stats, loading, error, anchorRef, initialPo
       )}
 
       {!loading && !error && stats && (
-        <>
+        <div className="overflow-y-auto" style={{ maxHeight: position.maxHeight }}>
           {/* Tinted gradient header */}
           <div
-            className="relative px-4 pt-4 pb-5"
+            className="relative px-4 pt-3 pb-2.5"
             style={{
               background: `linear-gradient(135deg, hsl(${hue} 68% 40%) 0%, hsl(${(hue + 48) % 360} 72% 24%) 100%)`,
             }}
           >
             <div
-              className="absolute -top-10 -right-10 w-32 h-32 rounded-full opacity-40 blur-2xl"
+              className="absolute -top-10 -right-10 w-28 h-28 rounded-full opacity-40 blur-2xl"
               style={{ background: `hsl(${(hue + 120) % 360} 80% 55%)` }}
             />
             <div
-              className="absolute -bottom-14 -left-8 w-28 h-28 rounded-full opacity-30 blur-2xl"
+              className="absolute -bottom-12 -left-8 w-24 h-24 rounded-full opacity-30 blur-2xl"
               style={{ background: `hsl(${hue} 85% 60%)` }}
             />
-            <div className="relative flex items-center gap-3">
+            <div className="relative flex items-center gap-2.5">
               {stats.photo_url ? (
                 <img
                   src={stats.photo_url}
                   alt={stats.username}
-                  className="w-12 h-12 rounded-full object-cover ring-2 ring-white/40 shadow-lg flex-shrink-0"
+                  className="w-9 h-9 rounded-full object-cover ring-2 ring-white/40 shadow-lg flex-shrink-0"
                 />
               ) : (
-                <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white font-bold text-lg ring-2 ring-white/40 shadow-lg flex-shrink-0">
+                <div className="w-9 h-9 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white font-bold text-base ring-2 ring-white/40 shadow-lg flex-shrink-0">
                   {(stats.display_name || stats.username).charAt(0).toUpperCase()}
                 </div>
               )}
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
-                  <p className="font-bold text-white truncate drop-shadow">
+                  <p className="font-bold text-white text-sm truncate drop-shadow">
                     {stats.display_name || stats.username}
                   </p>
                   {stats.is_admin && (
-                    <span className="text-[9px] font-mono font-bold bg-emerald-400/25 text-emerald-200 border border-emerald-300/40 px-1.5 py-0.5 rounded flex-shrink-0">
+                    <span className="text-[8px] font-mono font-bold bg-emerald-400/25 text-emerald-200 border border-emerald-300/40 px-1 py-0.5 rounded flex-shrink-0">
                       ADMIN
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-white/75 truncate">@{stats.username}</p>
+                <p className="text-[11px] text-white/75 truncate">@{stats.username}</p>
               </div>
               <span
-                className={`ml-auto flex-shrink-0 text-xs font-bold px-2 py-1 rounded-lg border backdrop-blur ${meta.cls}`}
+                className={`flex-shrink-0 text-[11px] font-bold px-1.5 py-0.5 rounded-lg border backdrop-blur ${meta.cls}`}
                 title={`Rank #${entry.rank}`}
               >
                 {meta.icon}
               </span>
             </div>
 
-            {/* All-time hero */}
-            <div className="relative mt-4 flex items-end justify-between gap-2">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/70">
-                  All-time coded
-                </p>
-                <p className="text-3xl font-extrabold text-white tabular-nums drop-shadow leading-tight">
-                  {formatDuration(stats.all_time_seconds)}
-                </p>
-              </div>
-              <p className="text-[11px] text-white/70 tabular-nums pb-1">
-                since {new Date(stats.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
-              </p>
-            </div>
-          </div>
-
-          {/* AI vs Human split */}
-          <div className="px-4 py-3.5 border-b border-white/[0.07]">
-            <div className="flex items-center justify-between text-xs font-medium mb-1.5">
-              <span className="text-blue-300">Human</span>
-              <span className="text-white/40 tabular-nums">
-                {stats.aggregates.total_seconds > 0
-                  ? `${Math.round((stats.aggregates.human_seconds / stats.aggregates.total_seconds) * 100)}%`
-                  : '0%'}
+            <div className="relative mt-2 flex items-center justify-between gap-2">
+              <span className="text-[9px] font-semibold uppercase tracking-[0.16em] text-white/70">
+                All-time
+              </span>
+              <span className="text-xl font-extrabold text-white tabular-nums leading-none drop-shadow">
+                {formatDuration(stats.all_time_seconds)}
+              </span>
+              <span className="text-[10px] text-white/60 tabular-nums">
+                since{' '}
+                {new Date(stats.created_at).toLocaleDateString('en-US', {
+                  month: 'short',
+                  year: 'numeric',
+                })}
               </span>
             </div>
-            <div className="flex h-2 rounded-full overflow-hidden bg-white/[0.07]">
-              <div
-                className="bg-gradient-to-r from-blue-500 to-blue-400"
-                style={{ width: `${stats.aggregates.total_seconds > 0 ? (stats.aggregates.human_seconds / stats.aggregates.total_seconds) * 100 : 0}%` }}
-              />
-              <div
-                className="bg-gradient-to-r from-violet-500 to-fuchsia-500"
-                style={{ width: `${stats.aggregates.total_seconds > 0 ? (stats.aggregates.ai_seconds / stats.aggregates.total_seconds) * 100 : 0}%` }}
-              />
+          </div>
+
+          {isEmpty ? (
+            <div className="px-4 py-5 text-xs text-white/45">
+              No coding activity tracked yet — tell them to hit Sync.
             </div>
-            <div className="mt-1.5 flex items-center justify-between text-xs font-medium">
-              <span className="text-white/85 tabular-nums">{formatDuration(stats.aggregates.human_seconds)}</span>
-              <span className="text-violet-300 tabular-nums">{formatDuration(stats.aggregates.ai_seconds)} AI</span>
-            </div>
-          </div>
-
-          {/* Stat grid */}
-          <div className="px-4 py-3.5 border-b border-white/[0.07] grid grid-cols-2 gap-x-4 gap-y-3">
-            <StatCell label="Lines changed">
-              {formatLines(stats.aggregates.ai_lines + stats.aggregates.human_lines)}
-            </StatCell>
-            <StatCell label="Days active" align="right">
-              {stats.aggregates.days_active}
-              <span className="text-white/40 text-xs font-medium"> / {stats.aggregates.days_tracked}</span>
-            </StatCell>
-            <StatCell label="Best day">
-              {stats.aggregates.best_day
-                ? `${formatShortDate(stats.aggregates.best_day.date)} · ${formatDuration(stats.aggregates.best_day.seconds)}`
-                : '—'}
-            </StatCell>
-            <StatCell label="Streak" align="right">
-              <span className="mr-1">🔥</span>
-              {stats.aggregates.current_streak}
-              <span className="text-white/40 text-xs font-medium"> / {stats.aggregates.longest_streak}</span>
-            </StatCell>
-            <StatCell label="Today vs yesterday">
-              <span className={`${deltaInfo(stats.aggregates.delta_percent, stats.aggregates.today_seconds, stats.aggregates.yesterday_seconds).cls}`}>
-                {deltaInfo(stats.aggregates.delta_percent, stats.aggregates.today_seconds, stats.aggregates.yesterday_seconds).text}
-              </span>
-            </StatCell>
-            <StatCell label="Today" align="right">
-              <span className="tabular-nums">{formatDuration(stats.aggregates.today_seconds)}</span>
-            </StatCell>
-          </div>
-
-          {/* Last 7 days sparkline */}
-          <Section title="Last 7 days">
-            <Sparkline data={stats.aggregates.week} />
-          </Section>
-
-          {/* Breakdowns */}
-          <div className="overflow-y-auto" style={{ maxHeight: 260 }}>
-            <BreakdownSection title="Top languages" items={stats.languages} gradient="bg-gradient-to-r from-blue-500 to-indigo-500" />
-            <BreakdownSection title="Editors" items={stats.editors} gradient="bg-gradient-to-r from-cyan-500 to-teal-500" />
-            <BreakdownSection title="Operating systems" items={stats.operating_systems} gradient="bg-gradient-to-r from-slate-400 to-zinc-500" />
-            <BreakdownSection title="Top projects" items={stats.projects} gradient="bg-gradient-to-r from-amber-500 to-orange-500" />
-            <BreakdownSection title="Machines" items={stats.machines} gradient="bg-gradient-to-r from-fuchsia-500 to-pink-500" />
-
-            {stats.ai_models.length > 0 && (
-              <Section title="AI models">
-                {stats.ai_models.slice(0, 5).map((m) => (
-                  <div key={m.name} className="flex items-center justify-between text-xs mb-1.5 last:mb-0">
-                    <span className="text-white/85 font-medium truncate mr-2">🤖 {m.name}</span>
-                    <span className="text-white/45 tabular-nums flex-shrink-0 pl-2">
-                      {formatLines(m.lines)} lines{m.cost > 0 ? ` · $${m.cost.toFixed(2)}` : ''}
-                    </span>
+          ) : (
+            <div className="grid grid-cols-2 divide-x divide-white/[0.06]">
+              {/* Left column */}
+              <div className="flex flex-col [&>*+*]:border-t [&>*+*]:border-white/[0.06]">
+                {/* AI vs Human split */}
+                <Block>
+                  <div className="flex h-1.5 rounded-full overflow-hidden bg-white/[0.08]">
+                    <div
+                      className="bg-gradient-to-r from-blue-500 to-blue-400"
+                      style={{ width: `${total > 0 ? (stats.aggregates.human_seconds / total) * 100 : 0}%` }}
+                    />
+                    <div
+                      className="bg-gradient-to-r from-violet-500 to-fuchsia-500"
+                      style={{ width: `${total > 0 ? (stats.aggregates.ai_seconds / total) * 100 : 0}%` }}
+                    />
                   </div>
-                ))}
-              </Section>
-            )}
-
-            {(stats.ai_tokens.input > 0 || stats.ai_tokens.output > 0 || stats.ai_tokens.sessions > 0) && (
-              <Section title="AI usage">
-                <div className="flex items-center justify-between text-xs text-white/85">
-                  <span className="font-medium">Tokens</span>
-                  <span className="tabular-nums text-white/60">
-                    {formatLines(stats.ai_tokens.input)} in · {formatLines(stats.ai_tokens.output)} out
-                  </span>
-                </div>
-                {stats.ai_tokens.sessions > 0 && (
-                  <div className="mt-1.5 flex items-center justify-between text-xs text-white/85">
-                    <span className="font-medium">AI sessions</span>
-                    <span className="tabular-nums text-white/60">{stats.ai_tokens.sessions}</span>
+                  <div className="mt-1.5 flex items-center justify-between text-[10px]">
+                    <span className="text-blue-300 font-medium">Human {humanPct}%</span>
+                    <span className="text-white/40 tabular-nums">{formatDuration(stats.aggregates.human_seconds)}</span>
+                    <span className="text-white/25">·</span>
+                    <span className="text-white/40 tabular-nums">{formatDuration(stats.aggregates.ai_seconds)}</span>
+                    <span className="text-violet-300 font-medium">AI {aiPct}%</span>
                   </div>
-                )}
-              </Section>
-            )}
-          </div>
+                </Block>
 
-          {stats.aggregates.total_seconds === 0 &&
-            stats.languages.length === 0 &&
-            stats.ai_models.length === 0 && (
-              <div className="px-4 py-4 text-xs text-white/45">
-                No coding activity tracked yet — tell them to hit Sync.
+                {/* Stat grid */}
+                <Block>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                    <StatCell label="Lines changed">
+                      {formatLines(stats.aggregates.ai_lines + stats.aggregates.human_lines)}
+                    </StatCell>
+                    <StatCell label="Days active" align="right">
+                      {stats.aggregates.days_active}
+                      <span className="text-white/40 text-xs font-medium"> / {stats.aggregates.days_tracked}</span>
+                    </StatCell>
+                    <StatCell label="Best day">
+                      {stats.aggregates.best_day
+                        ? `${formatShortDate(stats.aggregates.best_day.date)} · ${formatDuration(stats.aggregates.best_day.seconds)}`
+                        : '—'}
+                    </StatCell>
+                    <StatCell label="Streak" align="right">
+                      <span className="mr-1">🔥</span>
+                      {stats.aggregates.current_streak}
+                      <span className="text-white/40 text-xs font-medium"> / {stats.aggregates.longest_streak}</span>
+                    </StatCell>
+                    <StatCell label="Today vs yesterday">
+                      <span className={deltaInfo(stats.aggregates.delta_percent, stats.aggregates.today_seconds, stats.aggregates.yesterday_seconds).cls}>
+                        {deltaInfo(stats.aggregates.delta_percent, stats.aggregates.today_seconds, stats.aggregates.yesterday_seconds).text}
+                      </span>
+                    </StatCell>
+                    <StatCell label="Today" align="right">
+                      <span className="tabular-nums">{formatDuration(stats.aggregates.today_seconds)}</span>
+                    </StatCell>
+                  </div>
+                </Block>
+
+                {/* Last 7 days sparkline */}
+                <Block className="mt-auto">
+                  <Sparkline data={stats.aggregates.week} height={40} />
+                </Block>
               </div>
-            )}
-        </>
+
+              {/* Right column */}
+              <div className="flex flex-col [&>*+*]:border-t [&>*+*]:border-white/[0.06]">
+                {/* Top languages */}
+                <Block title="Top languages">
+                  {stats.languages.length === 0 ? (
+                    <p className="text-[11px] text-white/40">No languages yet</p>
+                  ) : (
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {stats.languages.slice(0, 5).map((l) => (
+                        <LanguageTile key={l.name} name={l.name} percent={l.percent} />
+                      ))}
+                    </div>
+                  )}
+                </Block>
+
+                {/* Editors / OS / Machines */}
+                <Block title="Stack">
+                  <div className="grid grid-cols-3 gap-2">
+                    <StackCol accent="bg-cyan-400" label="Editors" items={stats.editors.slice(0, 2)} />
+                    <StackCol accent="bg-slate-400" label="OS" items={stats.operating_systems.slice(0, 2)} />
+                    <StackCol accent="bg-fuchsia-400" label="Machines" items={stats.machines.slice(0, 2)} />
+                  </div>
+                </Block>
+
+                {/* Top projects */}
+                <Block title="Top projects">
+                  {stats.projects.length === 0 ? (
+                    <p className="text-[11px] text-white/40">No projects yet</p>
+                  ) : (
+                    stats.projects.slice(0, 3).map((p) => (
+                      <div key={p.name} className="flex items-center justify-between text-[11px] py-0.5">
+                        <span className="text-white/85 truncate mr-2">📁 {p.name}</span>
+                        <span className="text-white/45 tabular-nums flex-shrink-0">
+                          {formatDuration(p.seconds)} · {p.percent}%
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </Block>
+
+                {/* AI models + usage */}
+                <Block title="AI">
+                  {stats.ai_models.length === 0 && !hasAiTokens ? (
+                    <p className="text-[11px] text-white/40">No AI usage yet</p>
+                  ) : (
+                    <>
+                      {stats.ai_models.slice(0, 3).map((m) => (
+                        <div key={m.name} className="flex items-center justify-between text-[11px] py-0.5">
+                          <span className="text-violet-300 truncate mr-2">🤖 {m.name}</span>
+                          <span className="text-white/45 tabular-nums flex-shrink-0">
+                            {formatLines(m.lines)} lines{m.cost > 0 ? ` · $${m.cost.toFixed(2)}` : ''}
+                          </span>
+                        </div>
+                      ))}
+                      {hasAiTokens && (
+                        <div className="mt-1 pt-1.5 border-t border-white/[0.06] flex items-center justify-between gap-2 text-[10px] text-white/50">
+                          <span className="flex-shrink-0">Tokens</span>
+                          <span className="tabular-nums truncate">
+                            {formatLines(stats.ai_tokens.input)} in · {formatLines(stats.ai_tokens.output)} out
+                            {stats.ai_tokens.sessions > 0 ? ` · ${stats.ai_tokens.sessions} sessions` : ''}
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </Block>
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>,
     document.body

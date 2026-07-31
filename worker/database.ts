@@ -215,6 +215,7 @@ export async function getWeeklyData(env: Env, dates: string[]) {
       u.id as user_id,
       u.username,
       u.display_name,
+      u.photo_url,
       ds.date,
       ds.total_seconds as seconds,
       ds.ai_seconds,
@@ -234,6 +235,7 @@ export async function getWeeklyData(env: Env, dates: string[]) {
         user_id: row.user_id,
         username: row.username,
         display_name: row.display_name,
+        photo_url: row.photo_url,
         daily_data: [],
       });
     }

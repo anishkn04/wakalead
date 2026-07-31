@@ -47,6 +47,7 @@ export interface WeeklyData {
     user_id: number;
     username: string;
     display_name: string | null;
+    photo_url: string | null;
     daily_data: {
       date: string;
       seconds: number;
