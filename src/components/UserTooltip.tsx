@@ -14,7 +14,7 @@ interface UserTooltipProps {
   onCardLeave: () => void;
 }
 
-const WIDTH = 580;
+const WIDTH = 640;
 const MARGIN = 12;
 const OFFSET = 16;
 
@@ -217,7 +217,7 @@ function Sparkline({
 
 function Skeleton() {
   return (
-    <div className="w-[580px] max-w-[94vw] overflow-hidden rounded-2xl border border-white/10 bg-[#101014] shadow-2xl">
+    <div className="w-[640px] max-w-[94vw] overflow-hidden rounded-2xl border border-white/10 bg-[#101014] shadow-2xl">
       <div className="h-24 bg-zinc-800/60 animate-shimmer" />
       <div className="grid grid-cols-2 divide-x divide-white/[0.06] p-4 gap-4">
         {[0, 1, 2, 3].map((i) => (
@@ -339,23 +339,14 @@ export function UserTooltip({ entry, stats, loading, error, anchorRef, initialPo
       )}
 
       {!loading && !error && stats && (
-        <div className="overflow-y-auto" style={{ maxHeight: position.maxHeight }}>
-          {/* Tinted gradient header */}
-          <div
-            className="relative px-4 pt-3 pb-2.5"
-            style={{
-              background: `linear-gradient(135deg, hsl(${hue} 68% 40%) 0%, hsl(${(hue + 48) % 360} 72% 24%) 100%)`,
-            }}
-          >
+        <div className="overflow-y-auto overflow-x-hidden" style={{ maxHeight: position.maxHeight }}>
+          {/* Flat header with per-user accent stripe */}
+          <div className="relative border-b border-white/[0.07] bg-[#17171d] px-4 pt-3 pb-2.5">
             <div
-              className="absolute -top-10 -right-10 w-28 h-28 rounded-full opacity-40 blur-2xl"
-              style={{ background: `hsl(${(hue + 120) % 360} 80% 55%)` }}
+              className="absolute top-0 left-0 right-0 h-[3px]"
+              style={{ background: `hsl(${hue} 65% 50%)` }}
             />
-            <div
-              className="absolute -bottom-12 -left-8 w-24 h-24 rounded-full opacity-30 blur-2xl"
-              style={{ background: `hsl(${hue} 85% 60%)` }}
-            />
-            <div className="relative flex items-center gap-2.5">
+            <div className="flex items-center gap-2.5">
               {stats.photo_url ? (
                 <img
                   src={stats.photo_url}
@@ -369,7 +360,7 @@ export function UserTooltip({ entry, stats, loading, error, anchorRef, initialPo
               )}
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
-                  <p className="font-bold text-white text-sm truncate drop-shadow">
+                  <p className="font-bold text-white text-sm truncate">
                     {stats.display_name || stats.username}
                   </p>
                   {stats.is_admin && (
@@ -392,7 +383,7 @@ export function UserTooltip({ entry, stats, loading, error, anchorRef, initialPo
               <span className="text-[9px] font-semibold uppercase tracking-[0.16em] text-white/70">
                 All-time
               </span>
-              <span className="text-xl font-extrabold text-white tabular-nums leading-none drop-shadow">
+              <span className="text-xl font-extrabold text-white tabular-nums leading-none">
                 {formatDuration(stats.all_time_seconds)}
               </span>
               <span className="text-[10px] text-white/60 tabular-nums">
@@ -415,22 +406,31 @@ export function UserTooltip({ entry, stats, loading, error, anchorRef, initialPo
               <div className="flex flex-col [&>*+*]:border-t [&>*+*]:border-white/[0.06]">
                 {/* AI vs Human split */}
                 <Block>
-                  <div className="flex h-1.5 rounded-full overflow-hidden bg-white/[0.08]">
+                  <div className="flex items-center justify-between text-[10px] font-medium mb-1.5">
+                    <span className="flex items-center gap-1.5 text-blue-400">
+                      <span className="w-2 h-2 rounded-sm bg-blue-500" />
+                      Human
+                    </span>
+                    <span className="flex items-center gap-1.5 text-violet-400">
+                      <span className="w-2 h-2 rounded-sm bg-violet-500" />
+                      AI
+                    </span>
+                  </div>
+                  <div className="flex h-2.5 rounded-full overflow-hidden bg-white/[0.08]">
                     <div
-                      className="bg-gradient-to-r from-blue-500 to-blue-400"
-                      style={{ width: `${total > 0 ? (stats.aggregates.human_seconds / total) * 100 : 0}%` }}
+                      className="bg-blue-500"
+                      style={{ width: `${total > 0 ? humanPct : 0}%` }}
                     />
                     <div
-                      className="bg-gradient-to-r from-violet-500 to-fuchsia-500"
-                      style={{ width: `${total > 0 ? (stats.aggregates.ai_seconds / total) * 100 : 0}%` }}
+                      className="bg-violet-500"
+                      style={{ width: `${total > 0 ? aiPct : 0}%` }}
                     />
                   </div>
-                  <div className="mt-1.5 flex items-center justify-between text-[10px]">
-                    <span className="text-blue-300 font-medium">Human {humanPct}%</span>
-                    <span className="text-white/40 tabular-nums">{formatDuration(stats.aggregates.human_seconds)}</span>
-                    <span className="text-white/25">·</span>
-                    <span className="text-white/40 tabular-nums">{formatDuration(stats.aggregates.ai_seconds)}</span>
-                    <span className="text-violet-300 font-medium">AI {aiPct}%</span>
+                  <div className="mt-1.5 flex items-center justify-between text-[10px] tabular-nums">
+                    <span className="text-blue-300">{formatDuration(stats.aggregates.human_seconds)}</span>
+                    <span className="text-white/50">{humanPct}%</span>
+                    <span className="text-white/50">{aiPct}%</span>
+                    <span className="text-violet-300">{formatDuration(stats.aggregates.ai_seconds)}</span>
                   </div>
                 </Block>
 
@@ -502,7 +502,7 @@ export function UserTooltip({ entry, stats, loading, error, anchorRef, initialPo
                   ) : (
                     stats.projects.slice(0, 3).map((p) => (
                       <div key={p.name} className="flex items-center justify-between text-[11px] py-0.5">
-                        <span className="text-white/85 truncate mr-2">📁 {p.name}</span>
+                        <span className="text-white/85 truncate mr-2 min-w-0">📁 {p.name}</span>
                         <span className="text-white/45 tabular-nums flex-shrink-0">
                           {formatDuration(p.seconds)} · {p.percent}%
                         </span>
@@ -519,7 +519,7 @@ export function UserTooltip({ entry, stats, loading, error, anchorRef, initialPo
                     <>
                       {stats.ai_models.slice(0, 3).map((m) => (
                         <div key={m.name} className="flex items-center justify-between text-[11px] py-0.5">
-                          <span className="text-violet-300 truncate mr-2">🤖 {m.name}</span>
+                          <span className="text-violet-300 truncate mr-2 min-w-0">🤖 {m.name}</span>
                           <span className="text-white/45 tabular-nums flex-shrink-0">
                             {formatLines(m.lines)} lines{m.cost > 0 ? ` · $${m.cost.toFixed(2)}` : ''}
                           </span>
@@ -528,7 +528,7 @@ export function UserTooltip({ entry, stats, loading, error, anchorRef, initialPo
                       {hasAiTokens && (
                         <div className="mt-1 pt-1.5 border-t border-white/[0.06] flex items-center justify-between gap-2 text-[10px] text-white/50">
                           <span className="flex-shrink-0">Tokens</span>
-                          <span className="tabular-nums truncate">
+                          <span className="tabular-nums truncate min-w-0 text-right">
                             {formatLines(stats.ai_tokens.input)} in · {formatLines(stats.ai_tokens.output)} out
                             {stats.ai_tokens.sessions > 0 ? ` · ${stats.ai_tokens.sessions} sessions` : ''}
                           </span>
