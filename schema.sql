@@ -18,9 +18,9 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at INTEGER NOT NULL
 );
 
-CREATE INDEX idx_users_wakatime_id ON users(wakatime_id);
-CREATE INDEX idx_users_is_admin ON users(is_admin);
-CREATE INDEX idx_users_is_banned ON users(is_banned);
+CREATE INDEX IF NOT EXISTS idx_users_wakatime_id ON users(wakatime_id);
+CREATE INDEX IF NOT EXISTS idx_users_is_admin ON users(is_admin);
+CREATE INDEX IF NOT EXISTS idx_users_is_banned ON users(is_banned);
 
 -- Daily stats table - stores daily coding time per user
 CREATE TABLE IF NOT EXISTS daily_stats (
@@ -37,8 +37,8 @@ CREATE TABLE IF NOT EXISTS daily_stats (
     UNIQUE(user_id, date)
 );
 
-CREATE INDEX idx_daily_stats_user_date ON daily_stats(user_id, date);
-CREATE INDEX idx_daily_stats_date ON daily_stats(date);
+CREATE INDEX IF NOT EXISTS idx_daily_stats_user_date ON daily_stats(user_id, date);
+CREATE INDEX IF NOT EXISTS idx_daily_stats_date ON daily_stats(date);
 
 -- Data fetch log - tracks API fetches to prevent rate limiting
 CREATE TABLE IF NOT EXISTS fetch_log (
@@ -52,4 +52,4 @@ CREATE TABLE IF NOT EXISTS fetch_log (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_fetch_log_user_date ON fetch_log(user_id, fetch_date);
+CREATE INDEX IF NOT EXISTS idx_fetch_log_user_date ON fetch_log(user_id, fetch_date);

@@ -10,7 +10,9 @@
     "deploy:both": "npm run build && wrangler pages deploy dist --project-name=wakalead --commit-dirty=true && npx wrangler deploy",
     "worker:dev": "wrangler dev",
     "worker:deploy": "wrangler deploy",
-    "db:migrate": "wrangler d1 execute wakalead --file=./schema.sql"
+    "db:migrate": "wrangler d1 execute wakalead --file=./schema.sql",
+    "db:migrate:local": "wrangler d1 execute wakalead --local --file=./migrations/add_ai_stats.sql",
+    "db:migrate:remote": "wrangler d1 execute wakalead --remote --file=./migrations/add_ai_stats.sql"
   },
   "dependencies": {
     "react": "^18.3.1",
