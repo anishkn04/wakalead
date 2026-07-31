@@ -53,8 +53,8 @@ const LANGUAGE_ICONS: Record<string, string> = {
   c,
   'c++': cplusplus,
   cpp: cplusplus,
+  'c#': csharp,
   csharp,
-  '#c#': csharp,
   html: html5,
   html5: html5,
   css: css3,
@@ -70,6 +70,7 @@ const LANGUAGE_ICONS: Record<string, string> = {
   react,
   svelte,
   shell: bash,
+  'shell script': bash,
   bash,
   zsh: bash,
   powershell,
@@ -90,12 +91,13 @@ const LANGUAGE_ICONS: Record<string, string> = {
   zig,
   terraform,
   tailwind: tailwindcss,
+  'tailwind css': tailwindcss,
   r,
   solidity,
 }
 
 export function getLanguageIcon(name: string): string | undefined {
-  return LANGUAGE_ICONS[name]
+  return LANGUAGE_ICONS[name.toLowerCase()]
 }
 
 export function languageHue(name: string): number {

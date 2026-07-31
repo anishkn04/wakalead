@@ -213,15 +213,75 @@ class ApiClient {
 
 export const api = new ApiClient();
 
-// Per-session cache for hover-card stats so re-hovers are instant
-const tooltipStatsCache = new Map<number, TooltipStats>();
+// Browser-persisted cache for hover-card stats so re-hovers (and hovers on
+// a fresh page load) are instant. Refreshed in the background after syncs.
+const TOOLTIP_CACHE_KEY = 'wakalead:tooltip:v1';
+const TOOLTIP_TTL_MS = 6 * 60 * 60 * 1000;
+
+interface CachedTooltip {
+  ts: number;
+  stats: TooltipStats;
+}
+
+const tooltipStatsCache = new Map<number, CachedTooltip>();
+const pendingTooltipFetches = new Map<number, Promise<TooltipStats>>();
+
+function readTooltipCache(): void {
+  try {
+    const raw = localStorage.getItem(TOOLTIP_CACHE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as Record<string, CachedTooltip>;
+    for (const [id, entry] of Object.entries(parsed)) {
+      if (entry && entry.stats && typeof entry.ts === 'number') {
+        tooltipStatsCache.set(Number(id), entry);
+      }
+    }
+  } catch {
+    // Corrupted or unavailable storage - start fresh
+  }
+}
+readTooltipCache();
+
+function persistTooltipCache(): void {
+  try {
+    const snapshot: Record<string, CachedTooltip> = {};
+    for (const [id, entry] of tooltipStatsCache) snapshot[String(id)] = entry;
+    localStorage.setItem(TOOLTIP_CACHE_KEY, JSON.stringify(snapshot));
+  } catch {
+    // Storage full or blocked - cache just stays in-memory this session
+  }
+}
+
+function fetchAndCache(userId: number): Promise<TooltipStats> {
+  const inFlight = pendingTooltipFetches.get(userId);
+  if (inFlight) return inFlight;
+  const promise = api.getUserStats(userId).then((stats) => {
+    tooltipStatsCache.set(userId, { ts: Date.now(), stats });
+    persistTooltipCache();
+    return stats;
+  });
+  pendingTooltipFetches.set(userId, promise);
+  void promise.finally(() => pendingTooltipFetches.delete(userId));
+  return promise;
+}
 
 export async function getUserStats(userId: number): Promise<TooltipStats> {
   const cached = tooltipStatsCache.get(userId);
-  if (cached) return cached;
-  const stats = await api.getUserStats(userId);
-  tooltipStatsCache.set(userId, stats);
-  return stats;
+  if (cached) return cached.stats;
+  return fetchAndCache(userId);
+}
+
+/** Warm the hover-card cache for many users in the background. */
+export async function prefetchTooltipStats(userIds: number[], force = false): Promise<void> {
+  const targets = [...new Set(userIds)].filter((id) => {
+    if (force) return true;
+    const cached = tooltipStatsCache.get(id);
+    return !cached || Date.now() - cached.ts > TOOLTIP_TTL_MS;
+  });
+  const BATCH = 5;
+  for (let i = 0; i < targets.length; i += BATCH) {
+    await Promise.all(targets.slice(i, i + BATCH).map(fetchAndCache));
+  }
 }
 
 // Utility functions

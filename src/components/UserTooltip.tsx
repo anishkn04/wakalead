@@ -101,10 +101,13 @@ function LanguageTile({ name, percent }: { name: string; percent: number }) {
         <img src={icon} alt={name} className="w-5 h-5 flex-shrink-0" draggable={false} />
       ) : (
         <span
-          className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white/80 flex-shrink-0"
+          className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0"
           style={{ background: `hsl(${hue} 55% 38%)` }}
+          title="No icon for this language"
         >
-          {name.charAt(0).toUpperCase()}
+          <svg className="w-3 h-3 text-white/90" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+          </svg>
         </span>
       )}
       <span className="w-full text-[9px] text-white/80 truncate text-center">{name}</span>

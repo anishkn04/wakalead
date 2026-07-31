@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, API_BASE, User, LeaderboardEntry, WeeklyData, Metric, METRICS, formatRelativeTime } from '../api';
+import { api, API_BASE, User, LeaderboardEntry, WeeklyData, Metric, METRICS, formatRelativeTime, prefetchTooltipStats } from '../api';
 import { Header } from '../components/Header';
 import { Leaderboard } from '../components/Leaderboard';
 import { WeeklyChart } from '../components/WeeklyChart';
@@ -39,6 +39,14 @@ export function Dashboard() {
       setWeekLeaderboard(data.week);
       setWeeklyData(data.weeklyData);
       setLastSynced(data.lastSynced);
+
+      // Warm the hover-card cache so tooltips are instant. On a forced sync
+      // we refetch everything, otherwise just the stale/missing users.
+      const userIds = [
+        ...data.today.map((e: LeaderboardEntry) => e.user_id),
+        ...data.week.map((e: LeaderboardEntry) => e.user_id),
+      ];
+      void prefetchTooltipStats(userIds, forceRefresh);
     } catch (error: any) {
       console.error('Error loading data:', error);
     } finally {
