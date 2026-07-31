@@ -7,6 +7,9 @@ import {
   computeBoardStats,
   getSeenMessages,
   rememberMessage,
+  getBoardCache,
+  setBoardCache,
+  boardSignature,
   TONE_STYLES,
   TONE_LABELS,
   RoastResult,
@@ -41,8 +44,17 @@ export function Leaderboard({ title, entries, metric = 'total', loading }: Leade
       }));
   }, [entries, metric]);
 
-  // Roast engine - computes a stable message per user for this render
+  // Roast engine - stable per-board messages.
+  // Roasts are assigned once per "board signature" (metric + all numbers
+  // that can affect a roast) and persisted, so they only change when a
+  // real sync brings new data, not on reloads or tab switches.
   const roastState = useMemo(() => {
+    const signature = boardSignature(metric, rankedEntries);
+    const cached = getBoardCache();
+    if (cached && cached.signature === signature) {
+      return cached;
+    }
+
     const minMean = metric === 'lines' ? 500 : 3600;
     const board = computeBoardStats(
       rankedEntries.map((e) => e.metricValue),
@@ -50,6 +62,7 @@ export function Leaderboard({ title, entries, metric = 'total', loading }: Leade
     );
 
     const results: Record<number, RoastResult> = {};
+    const usedTexts = new Set<string>();
     rankedEntries.forEach((entry) => {
       results[entry.user_id] = getRoast(
         {
@@ -69,11 +82,14 @@ export function Leaderboard({ title, entries, metric = 'total', loading }: Leade
           metric,
           board,
         },
-        getSeenMessages(entry.user_id)
+        getSeenMessages(entry.user_id),
+        usedTexts
       );
     });
 
-    return { results, board };
+    const next = { signature, results, board };
+    setBoardCache(next);
+    return next;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rankedEntries, metric]);
 

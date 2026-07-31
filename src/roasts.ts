@@ -442,18 +442,29 @@ function hoursOf(s: number): number {
 }
 
 export function computeBoardStats(secondsList: number[], minMean = 3600): BoardStats {
-  const valid = secondsList.filter((s) => s > 0);
-  const values = valid.length > 0 ? valid : [0];
+  const total = secondsList.length;
+  const active = secondsList.filter((s) => s > 0);
+  const values = active.length > 0 ? active : [0];
   const min = Math.min(...values);
   const max = Math.max(...values);
   const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const activeRatio = total > 0 ? active.length / total : 0;
 
   return {
     min,
     max,
     mean,
     spreadRatio: max > 0 ? (max - min) / max : 0,
-    tightRace: max > 0 && (max - min) / max < 0.2 && mean >= minMean,
+    // A "tight race" only exists once the competition has actually started:
+    // at least 75% of the board must be active, the field must be close,
+    // and the average active time must clear the threshold. Idle boards or
+    // a lone active user never get competition praise.
+    tightRace:
+      max > 0 &&
+      active.length >= 2 &&
+      activeRatio >= 0.75 &&
+      (max - min) / max < 0.2 &&
+      mean >= minMean,
   };
 }
 
@@ -562,10 +573,15 @@ export const TONE_LABELS: Record<RoastTone, string> = {
   slacker: 'slacker',
 };
 
-export function getRoast(ctx: RoastContext, seen: string[]): RoastResult {
+export function getRoast(
+  ctx: RoastContext,
+  seen: string[],
+  usedTexts?: Set<string>
+): RoastResult {
   // Admin trailing special case
   if (ctx.isAdmin && ctx.rank === ctx.totalEntries && ctx.totalEntries > 1) {
     const line = ADMIN_LAST[Math.floor(Math.random() * ADMIN_LAST.length)];
+    usedTexts?.add(line.text);
     return { text: line.text, tone: 'neutral' };
   }
 
@@ -614,9 +630,12 @@ export function getRoast(ctx: RoastContext, seen: string[]): RoastResult {
 
   if (candidates.length === 0) candidates = pool;
 
-  const fresh = candidates.filter((c) => !seen.includes(c.text));
+  const fresh = candidates.filter(
+    (c) => !seen.includes(c.text) && !usedTexts?.has(c.text)
+  );
   const finalPool = fresh.length >= 3 ? fresh : candidates;
   const chosen = finalPool[Math.floor(Math.random() * finalPool.length)];
+  usedTexts?.add(chosen.text);
 
   return { text: chosen.text, tone };
 }
@@ -656,5 +675,74 @@ export function rememberMessage(userId: number, text: string): void {
     } catch {
       /* storage full / unavailable - non-critical */
     }
+  }
+}
+
+// ------------------------------------------------------------------
+// BOARD-LEVEL CACHE - keeps roasts stable until the data actually
+// changes (a real sync). Keyed by a signature of everything that can
+// affect a roast, so reloads / tab switches never re-roll comments.
+// ------------------------------------------------------------------
+
+const BOARD_KEY = 'wakalead:boardRoasts';
+
+interface SignatureEntry {
+  user_id: number;
+  rank: number;
+  total_seconds: number;
+  ai_seconds: number;
+  human_seconds: number;
+  ai_lines: number;
+  human_lines: number;
+  all_time_seconds?: number;
+  top_language?: string | null;
+  top_editor?: string | null;
+  top_project?: string | null;
+  is_admin?: boolean;
+}
+
+export interface BoardCache {
+  signature: string;
+  results: Record<number, RoastResult>;
+  board: BoardStats;
+}
+
+/** Deterministic fingerprint of a board + metric. Same data => same roast. */
+export function boardSignature(metric: string, ranked: SignatureEntry[]): string {
+  return JSON.stringify([
+    metric,
+    ranked.map((e) => [
+      e.user_id,
+      e.rank,
+      e.total_seconds,
+      e.ai_seconds,
+      e.human_seconds,
+      e.ai_lines,
+      e.human_lines,
+      e.all_time_seconds ?? 0,
+      e.top_language ?? '',
+      e.top_editor ?? '',
+      e.top_project ?? '',
+      e.is_admin ? 1 : 0,
+    ]),
+  ]);
+}
+
+export function getBoardCache(): BoardCache | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(BOARD_KEY);
+    return raw ? (JSON.parse(raw) as BoardCache) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setBoardCache(cache: BoardCache): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(BOARD_KEY, JSON.stringify(cache));
+  } catch {
+    /* storage full / unavailable - non-critical */
   }
 }
