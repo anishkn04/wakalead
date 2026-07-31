@@ -5,6 +5,7 @@ import {
   refreshAccessToken,
   parseTopStats,
   fetchAllTimeSinceToday,
+  collectDayBreakdowns,
 } from './wakatime';
 import {
   getAllUsers,
@@ -14,6 +15,7 @@ import {
   createOrUpdateUser,
   upsertUserStats,
   recentFetch,
+  upsertDayBreakdowns,
 } from './database';
 
 // Helper to get date in Nepal timezone (UTC+5:45)
@@ -97,6 +99,7 @@ export async function fetchDataForAllUsers(env: Env, useToday = false): Promise<
       
       // Store in database
       await storeDailyStats(env, user.id, dateStr, stats);
+      await upsertDayBreakdowns(env, user.id, dateStr, collectDayBreakdowns(daySummary || {}));
       await logFetch(env, user.id, 'daily', dateStr, 'success');
       
       console.log(`Successfully fetched data for user ${user.username}: ${stats.total_seconds}s (AI: ${stats.ai_seconds}s)`);
@@ -152,6 +155,7 @@ export async function fetchTodayDataForUser(
     const stats = parseDailySummary(daySummary || {});
     
     await storeDailyStats(env, userId, today, stats);
+    await upsertDayBreakdowns(env, userId, today, collectDayBreakdowns(daySummary || {}));
     await logFetch(env, userId, 'daily', today, 'success');
 
     // Keep the aggregated metadata fresh for personalized comments
@@ -227,6 +231,7 @@ export async function fetchTodayDataForAllUsers(env: Env, forceRefresh = false):
         const stats = parseDailySummary(daySummary || {});
         
         await storeDailyStats(env, user.id, today, stats);
+        await upsertDayBreakdowns(env, user.id, today, collectDayBreakdowns(daySummary || {}));
         await logFetch(env, user.id, 'daily', today, 'success');
       } catch (error: any) {
         console.error(`Error fetching today data for ${user.username}:`, error);
@@ -276,6 +281,7 @@ export async function fetchWeekDataForUser(
         
         // Store in database (will update if already exists)
         await storeDailyStats(env, userId, date, stats);
+        await upsertDayBreakdowns(env, userId, date, collectDayBreakdowns(daySummary));
       }
       
       // Aggregate top language/editor/project across the week (free - the
@@ -355,6 +361,7 @@ export async function fetchWeekDataForAllUsers(env: Env): Promise<void> {
             const date = daySummary.range.date;
             const stats = parseDailySummary(daySummary);
             await storeDailyStats(env, user.id, date, stats);
+            await upsertDayBreakdowns(env, user.id, date, collectDayBreakdowns(daySummary));
           }));
 
           // Aggregate top language/editor/project across the week

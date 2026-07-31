@@ -1,4 +1,4 @@
-import { Env, User, DailySummaryStats } from './types';
+import { Env, User, DailySummaryStats, DayBreakdown } from './types';
 
 const WAKATIME_API_BASE = 'https://wakatime.com/api/v1';
 
@@ -116,6 +116,78 @@ export function parseDailySummary(daySummary: any): DailySummaryStats {
       Math.round(grandTotal.human_additions || 0) +
       Math.round(grandTotal.human_deletions || 0),
   };
+}
+
+/** How many entries to keep per breakdown kind (keeps the table bounded). */
+const BREAKDOWN_LIMITS: Record<string, number> = {
+  language: 15,
+  editor: 5,
+  os: 5,
+  project: 15,
+  machine: 10,
+};
+
+/**
+ * Extract per-day breakdowns from one WakaTime summary day: top languages /
+ * editors / operating systems / projects / machines by seconds, plus AI model
+ * usage (from grand_total.ai_model_breakdown) and AI token/session totals.
+ *
+ * Reuses data the fetcher already downloads - zero extra API requests.
+ */
+export function collectDayBreakdowns(daySummary: any): {
+  timeRows: { kind: string; name: string; seconds: number }[];
+  modelRows: { name: string; lines: number; cost: number }[];
+  aiDaily: DayBreakdown['aiDaily'];
+} {
+  const timeRows: { kind: string; name: string; seconds: number }[] = [];
+  const kinds: Array<[string, string]> = [
+    ['language', 'languages'],
+    ['editor', 'editors'],
+    ['os', 'operating_systems'],
+    ['project', 'projects'],
+    ['machine', 'machines'],
+  ];
+
+  for (const [kind, apiKey] of kinds) {
+    const list = Array.isArray(daySummary?.[apiKey]) ? daySummary[apiKey] : [];
+    const top = [...list]
+      .filter((item: any) => item && item.name)
+      .sort((a: any, b: any) => (b.total_seconds || 0) - (a.total_seconds || 0))
+      .slice(0, BREAKDOWN_LIMITS[kind]);
+    for (const item of top) {
+      timeRows.push({
+        kind,
+        name: item.name,
+        seconds: Math.round(item.total_seconds || 0),
+      });
+    }
+  }
+
+  const modelRows: { name: string; lines: number; cost: number }[] = [];
+  const models = Array.isArray(daySummary?.grand_total?.ai_model_breakdown)
+    ? daySummary.grand_total.ai_model_breakdown
+    : [];
+  for (const m of [...models]
+    .sort((a: any, b: any) => (b.lines || 0) - (a.lines || 0))
+    .slice(0, 10)) {
+    if (m && m.name) {
+      modelRows.push({
+        name: m.name,
+        lines: Math.round(m.lines || 0),
+        cost: m.cost || 0,
+      });
+    }
+  }
+
+  const grand = daySummary?.grand_total || {};
+  const aiDaily = {
+    input_tokens: Math.round(grand.ai_input_tokens || 0),
+    output_tokens: Math.round(grand.ai_output_tokens || 0),
+    sessions: Math.round(grand.ai_sessions || 0),
+    prompt_events: Math.round(grand.ai_prompt_events_total || 0),
+  };
+
+  return { timeRows, modelRows, aiDaily };
 }
 
 /** Returns the most-active entry by seconds from a WakaTime breakdown array. */

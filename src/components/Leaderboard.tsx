@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
-import { LeaderboardEntry, Metric, getMetricValue, formatMetric, formatDuration } from '../api';
+import { useState, useEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent } from 'react';
+import { LeaderboardEntry, Metric, getMetricValue, formatMetric, formatDuration, getUserStats, TooltipStats } from '../api';
 import { Confetti } from './Confetti';
 import { useSound } from '../hooks/useSound';
+import { UserTooltip } from './UserTooltip';
 import {
   getRoast,
   computeBoardStats,
@@ -29,6 +30,71 @@ export function Leaderboard({ title, entries, metric = 'total', loading }: Leade
   const [showConfetti, setShowConfetti] = useState(false);
   const [animatedEntries, setAnimatedEntries] = useState<number[]>([]);
   const { playSound } = useSound();
+
+  // Hover card state (enka-style user stats tooltip)
+  const [hovered, setHovered] = useState<{ entry: LeaderboardEntry; rect: DOMRect } | null>(null);
+  const [hoverStats, setHoverStats] = useState<TooltipStats | null>(null);
+  const [hoverLoading, setHoverLoading] = useState(false);
+  const [hoverError, setHoverError] = useState<string | null>(null);
+  const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearOpenTimer = () => {
+    if (openTimer.current) {
+      clearTimeout(openTimer.current);
+      openTimer.current = null;
+    }
+  };
+  const clearCloseTimer = () => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
+
+  const handleMouseEnter = (entry: LeaderboardEntry, e: ReactMouseEvent<HTMLDivElement>) => {
+    clearOpenTimer();
+    clearCloseTimer();
+    const rect = e.currentTarget.getBoundingClientRect();
+    openTimer.current = setTimeout(() => {
+      setHovered({ entry, rect });
+      setHoverLoading(true);
+      setHoverError(null);
+      setHoverStats(null);
+      getUserStats(entry.user_id)
+        .then((stats) => setHoverStats(stats))
+        .catch((err: Error) => setHoverError(err.message))
+        .finally(() => setHoverLoading(false));
+    }, 180);
+  };
+
+  const handleMouseLeave = () => {
+    clearOpenTimer();
+    clearCloseTimer();
+    closeTimer.current = setTimeout(() => setHovered(null), 120);
+  };
+
+  const keepOpen = () => clearCloseTimer();
+  const scheduleClose = () => {
+    clearCloseTimer();
+    closeTimer.current = setTimeout(() => setHovered(null), 120);
+  };
+
+  // Close the hover card when the page scrolls or the viewport resizes
+  useEffect(() => {
+    if (!hovered) return;
+    const close = () => {
+      clearOpenTimer();
+      clearCloseTimer();
+      setHovered(null);
+    };
+    window.addEventListener('scroll', close);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('scroll', close);
+      window.removeEventListener('resize', close);
+    };
+  }, [hovered]);
 
   // Re-rank entries by the selected metric (e.g. Human, AI, AI Lines)
   const rankedEntries = useMemo(() => {
@@ -189,6 +255,8 @@ export function Leaderboard({ title, entries, metric = 'total', loading }: Leade
             return (
               <div
                 key={entry.user_id}
+                onMouseEnter={(e) => handleMouseEnter(entry, e)}
+                onMouseLeave={handleMouseLeave}
                 className={`
                   group flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl transition-all duration-200
                   ${isTop3 && !hasZeroValue ? 'bg-slate-50 dark:bg-zinc-800/50' : 'hover:bg-slate-50 dark:hover:bg-zinc-800/30'}
@@ -303,6 +371,19 @@ export function Leaderboard({ title, entries, metric = 'total', loading }: Leade
             );
           })}
         </div>
+      )}
+
+      {/* Enka-style hover card */}
+      {hovered && (
+        <UserTooltip
+          entry={hovered.entry}
+          stats={hoverStats}
+          loading={hoverLoading}
+          error={hoverError}
+          anchorRect={hovered.rect}
+          onCardEnter={keepOpen}
+          onCardLeave={scheduleClose}
+        />
       )}
     </div>
   );

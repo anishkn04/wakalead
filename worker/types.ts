@@ -89,3 +89,60 @@ export interface WeeklyData {
     human_lines: number;
   }[];
 }
+
+/** Per-day breakdown captured from one WakaTime summary day */
+export interface DayBreakdown {
+  date: string;
+  timeRows: { kind: string; name: string; seconds: number }[];
+  modelRows: { name: string; lines: number; cost: number }[];
+  aiDaily: {
+    input_tokens: number;
+    output_tokens: number;
+    sessions: number;
+    prompt_events: number;
+  };
+}
+
+/** One aggregated breakdown entry for the tooltip (name + total + share %) */
+export interface StatBreakdown {
+  name: string;
+  seconds: number;
+  percent: number;
+}
+
+/** Full payload served by GET /api/user/:id/stats (hover card data) */
+export interface TooltipStats {
+  user_id: number;
+  username: string;
+  display_name: string | null;
+  photo_url: string | null;
+  is_admin: boolean;
+  created_at: number;
+  all_time_seconds: number;
+  top_language: string | null;
+  top_editor: string | null;
+  top_project: string | null;
+  aggregates: {
+    total_seconds: number;
+    ai_seconds: number;
+    human_seconds: number;
+    ai_lines: number;
+    human_lines: number;
+    days_tracked: number;
+    days_active: number;
+    best_day: { date: string; seconds: number } | null;
+    current_streak: number;
+    longest_streak: number;
+    today_seconds: number;
+    yesterday_seconds: number;
+    delta_percent: number | null;
+    week: { date: string; seconds: number }[];
+  };
+  languages: StatBreakdown[];
+  editors: StatBreakdown[];
+  operating_systems: StatBreakdown[];
+  projects: StatBreakdown[];
+  machines: StatBreakdown[];
+  ai_models: { name: string; lines: number; cost: number }[];
+  ai_tokens: { input: number; output: number; sessions: number; prompt_events: number };
+}

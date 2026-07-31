@@ -1,6 +1,6 @@
 import { Env } from './types';
 import { exchangeCodeForToken, fetchWakaTimeUser } from './wakatime';
-import { createOrUpdateUser, getLeaderboard, getWeeklyData, getAllUsers, deleteUser, banUser, unbanUser, getUserById, getLastSyncTime } from './database';
+import { createOrUpdateUser, getLeaderboard, getWeeklyData, getAllUsers, deleteUser, banUser, unbanUser, getUserById, getLastSyncTime, getUserTooltipStats } from './database';
 import { createSession, verifySession, deleteSession, extractSessionId } from './session';
 import { fetchDataForAllUsers, fetchTodayDataForUser, fetchWeekDataForUser, fetchTodayDataForAllUsers, fetchWeekDataForAllUsers } from './fetcher';
 
@@ -235,6 +235,17 @@ export default {
           weeklyData: { dates, users: weeklyData },
           lastSynced,
         }, 200, 0); // No browser caching - always fetch fresh data
+      }
+
+      // Hover-card stats for a single user - public, served from D1 only
+      if (path.match(/^\/api\/user\/\d+\/stats$/)) {
+        const userId = parseInt(path.split('/')[3]);
+        const today = formatDate(getNepalDate());
+        const stats = await getUserTooltipStats(env, userId, today);
+        if (!stats) {
+          return errorResponse('User not found', 404);
+        }
+        return jsonResponse(stats, 200, 0);
       }
 
       // Protected routes - require authentication

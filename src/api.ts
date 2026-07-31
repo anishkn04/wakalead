@@ -58,6 +58,50 @@ export interface WeeklyData {
   }[];
 }
 
+/** One aggregated breakdown entry (name + total seconds + share %) */
+export interface TooltipStatBreakdown {
+  name: string;
+  seconds: number;
+  percent: number;
+}
+
+/** Full hover-card payload from GET /api/user/:id/stats */
+export interface TooltipStats {
+  user_id: number;
+  username: string;
+  display_name: string | null;
+  photo_url: string | null;
+  is_admin: boolean;
+  created_at: number;
+  all_time_seconds: number;
+  top_language: string | null;
+  top_editor: string | null;
+  top_project: string | null;
+  aggregates: {
+    total_seconds: number;
+    ai_seconds: number;
+    human_seconds: number;
+    ai_lines: number;
+    human_lines: number;
+    days_tracked: number;
+    days_active: number;
+    best_day: { date: string; seconds: number } | null;
+    current_streak: number;
+    longest_streak: number;
+    today_seconds: number;
+    yesterday_seconds: number;
+    delta_percent: number | null;
+    week: { date: string; seconds: number }[];
+  };
+  languages: TooltipStatBreakdown[];
+  editors: TooltipStatBreakdown[];
+  operating_systems: TooltipStatBreakdown[];
+  projects: TooltipStatBreakdown[];
+  machines: TooltipStatBreakdown[];
+  ai_models: { name: string; lines: number; cost: number }[];
+  ai_tokens: { input: number; output: number; sessions: number; prompt_events: number };
+}
+
 // Session management
 export function getSession(): string | null {
   return localStorage.getItem('session');
@@ -136,6 +180,10 @@ class ApiClient {
     return this.request('/dashboard');
   }
 
+  async getUserStats(userId: number): Promise<TooltipStats> {
+    return this.request<TooltipStats>(`/user/${userId}/stats`);
+  }
+
   // Admin endpoints
   async getUsers(): Promise<User[]> {
     return this.request<User[]>('/admin/users');
@@ -163,6 +211,17 @@ class ApiClient {
 }
 
 export const api = new ApiClient();
+
+// Per-session cache for hover-card stats so re-hovers are instant
+const tooltipStatsCache = new Map<number, TooltipStats>();
+
+export async function getUserStats(userId: number): Promise<TooltipStats> {
+  const cached = tooltipStatsCache.get(userId);
+  if (cached) return cached;
+  const stats = await api.getUserStats(userId);
+  tooltipStatsCache.set(userId, stats);
+  return stats;
+}
 
 // Utility functions
 export function formatDuration(seconds: number): string {
