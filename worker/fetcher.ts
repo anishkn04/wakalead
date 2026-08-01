@@ -32,6 +32,28 @@ function formatDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+const ALL_TIME_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Best-effort refresh of a user's lifetime coding seconds from the
+ * all_time_since_today endpoint. Gated to once a week per user to stay
+ * gentle on WakaTime rate limits; failures are logged and swallowed so a
+ * problem here never breaks the surrounding sync.
+ */
+async function ensureAllTimeStats(env: Env, userId: number, username: string, accessToken: string, fetchDate: string): Promise<void> {
+  try {
+    if (await recentFetch(env, userId, 'all_time', Date.now() - ALL_TIME_WEEK_MS)) {
+      return;
+    }
+    const allTimeSeconds = await fetchAllTimeSinceToday(accessToken);
+    await upsertUserStats(env, userId, { allTimeSeconds });
+    await logFetch(env, userId, 'all_time', fetchDate, 'success');
+    console.log(`Fetched all-time stats for ${username}: ${allTimeSeconds}s`);
+  } catch (error: any) {
+    console.error(`Error fetching all-time stats for ${username}:`, error);
+  }
+}
+
 /**
  * Data fetcher - runs on a scheduled cron job
  * Fetches yesterday's data for all users to stay within rate limits
@@ -111,13 +133,7 @@ export async function fetchDataForAllUsers(env: Env, useToday = false): Promise<
 
         // Refresh lifetime coding time at most once a week to stay gentle
         // on WakaTime rate limits.
-        const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-        if (!(await recentFetch(env, user.id, 'all_time', Date.now() - WEEK_MS))) {
-          const allTimeSeconds = await fetchAllTimeSinceToday(accessToken);
-          await upsertUserStats(env, user.id, { allTimeSeconds });
-          await logFetch(env, user.id, 'all_time', dateStr, 'success');
-          console.log(`Fetched all-time stats for ${user.username}: ${allTimeSeconds}s`);
-        }
+        await ensureAllTimeStats(env, user.id, user.username, accessToken, dateStr);
       } catch (error: any) {
         console.error(`Error updating user stats for ${user.username}:`, error);
       }
@@ -161,6 +177,7 @@ export async function fetchTodayDataForUser(
     // Keep the aggregated metadata fresh for personalized comments
     try {
       await upsertUserStats(env, userId, parseTopStats([daySummary]));
+      await ensureAllTimeStats(env, userId, `user-${userId}`, accessToken, today);
     } catch (error: any) {
       console.error('Error updating user stats:', error);
     }
@@ -287,6 +304,7 @@ export async function fetchWeekDataForUser(
       // Aggregate top language/editor/project across the week (free - the
       // data is already part of the summaries response we just fetched)
       await upsertUserStats(env, userId, parseTopStats(summaries.data));
+      await ensureAllTimeStats(env, userId, `user-${userId}`, accessToken, endDate);
       
       await logFetch(env, userId, 'weekly', endDate, 'success');
       console.log(`Successfully fetched week data for user ${userId}`);
@@ -366,6 +384,9 @@ export async function fetchWeekDataForAllUsers(env: Env): Promise<void> {
 
           // Aggregate top language/editor/project across the week
           await upsertUserStats(env, user.id, parseTopStats(summaries.data));
+
+          // Refresh lifetime coding time (at most once a week per user)
+          await ensureAllTimeStats(env, user.id, user.username, accessToken, endDate);
           
           await logFetch(env, user.id, 'weekly', endDate, 'success');
           console.log(`Successfully fetched week data for ${user.username}`);

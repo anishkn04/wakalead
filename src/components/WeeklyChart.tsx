@@ -176,7 +176,7 @@ export function WeeklyChart({ data, metric = 'total', onMetricChange, loading }:
                         {name.charAt(0).toUpperCase()}
                       </span>
                     )}
-                    <span className="truncate text-sm font-medium text-slate-800 dark:text-white" title={user.username}>
+                    <span className="truncate text-sm font-medium text-slate-800 dark:text-white min-w-0 flex-1" title={name}>
                       {name}
                     </span>
                     <span className="ml-auto text-xs font-semibold tabular-nums text-slate-500 dark:text-zinc-400">

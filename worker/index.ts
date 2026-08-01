@@ -53,6 +53,14 @@ function errorResponse(message: string, status = 400) {
 
 export default {
   /**
+   * Scheduled cron handler - runs the daily sync (which refreshes per-day
+   * stats for all users plus their all-time lifetime totals).
+   */
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(fetchDataForAllUsers(env));
+  },
+
+  /**
    * Handle HTTP requests
    */
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

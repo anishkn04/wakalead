@@ -1,9 +1,102 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, API_BASE, User, LeaderboardEntry, WeeklyData, Metric, METRICS, formatRelativeTime, prefetchTooltipStats } from '../api';
 import { Header } from '../components/Header';
 import { Leaderboard } from '../components/Leaderboard';
 import { WeeklyChart } from '../components/WeeklyChart';
 import { AdminPanel } from '../components/AdminPanel';
+
+/**
+ * User dropdown - keeps the action bar clean. Account info, Reconnect,
+ * Logout, and the destructive Delete Account live here instead of as loose
+ * buttons next to Sync.
+ */
+function UserMenu({ user, onLogout, onDelete }: { user: User; onLogout: () => void; onDelete: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-label="Open user menu"
+        title="Account menu"
+        className="relative flex-shrink-0 rounded-full hover:ring-2 hover:ring-blue-500/50 transition-shadow active:scale-95"
+      >
+        {user.photo_url ? (
+          <img
+            src={user.photo_url}
+            alt={user.username}
+            className="w-10 h-10 rounded-full object-cover ring-2 ring-slate-200 dark:ring-zinc-700"
+          />
+        ) : (
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-semibold ring-2 ring-slate-200 dark:ring-zinc-700">
+            {(user.display_name || user.username).charAt(0).toUpperCase()}
+          </div>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-2 w-56 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 shadow-xl overflow-hidden animate-fadeInUp z-50">
+          <div className="px-3.5 py-3 border-b border-slate-200 dark:border-zinc-800">
+            <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">
+              {user.display_name || user.username}
+            </p>
+            <p className="text-xs text-slate-500 dark:text-zinc-500 truncate">@{user.username}</p>
+          </div>
+          <a
+            href={`${API_BASE}/auth/login`}
+            className="flex items-center gap-2 px-3.5 py-2.5 text-sm text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+            </svg>
+            Reconnect to WakaTime
+          </a>
+          <button
+            onClick={() => {
+              setOpen(false);
+              onLogout();
+            }}
+            className="flex items-center gap-2 w-full px-3.5 py-2.5 text-sm text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+            </svg>
+            Logout
+          </button>
+          <button
+            onClick={() => {
+              setOpen(false);
+              onDelete();
+            }}
+            className="flex items-center gap-2 w-full px-3.5 py-2.5 text-sm text-red-600 dark:text-red-400 border-t border-slate-200 dark:border-zinc-800 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+            </svg>
+            Delete Account
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
  * Main dashboard page - Clean, professional design
@@ -188,24 +281,12 @@ export function Dashboard() {
                   </svg>
                   {refreshing ? 'Syncing...' : 'Sync'}
                 </button>
-                
-                <button
-                  onClick={handleDeleteAccount}
-                  className="px-3.5 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-colors active:scale-[0.97]"
-                >
-                  Delete
-                </button>
-                
-                <button
-                  onClick={handleLogout}
-                  className="px-3.5 py-2 text-sm font-medium text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-xl transition-colors active:scale-[0.97]"
-                >
-                  Logout
-                </button>
+
+                <UserMenu user={user} onLogout={handleLogout} onDelete={handleDeleteAccount} />
               </>
             )}
-            
-            {!user ? (
+
+            {!user && (
               <a
                 href={`${API_BASE}/auth/login`}
                 className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all"
@@ -214,13 +295,6 @@ export function Dashboard() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
                 Join Leaderboard
-              </a>
-            ) : (
-              <a
-                href={`${API_BASE}/auth/login`}
-                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30 hover:bg-blue-100 dark:hover:bg-blue-950/50 rounded-xl transition-colors"
-              >
-                Reconnect
               </a>
             )}
           </div>

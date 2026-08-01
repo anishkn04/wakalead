@@ -554,13 +554,13 @@ function renderTemplate(text: string, ctx: RoastContext): string {
 // ------------------------------------------------------------------
 
 export const TONE_STYLES: Record<RoastTone, string> = {
-  god: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200/70 dark:border-amber-900',
-  praise: 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border-amber-200/70 dark:border-amber-900',
-  solid: 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-200/70 dark:border-emerald-900',
-  neutral: 'bg-slate-100 dark:bg-zinc-800/80 text-slate-600 dark:text-zinc-400 border-slate-200/70 dark:border-zinc-700',
-  mild: 'bg-orange-50 dark:bg-orange-950/25 text-orange-700 dark:text-orange-400 border-orange-200/70 dark:border-orange-900',
-  hard: 'bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 border-red-200/70 dark:border-red-900',
-  slacker: 'bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 border-red-200/70 dark:border-red-900',
+  god: 'bg-amber-50 dark:bg-amber-400/15 text-amber-800 dark:text-amber-100 border-amber-200/70 dark:border-amber-500/40',
+  praise: 'bg-amber-50 dark:bg-amber-400/15 text-amber-800 dark:text-amber-100 border-amber-200/70 dark:border-amber-500/40',
+  solid: 'bg-emerald-50 dark:bg-emerald-400/15 text-emerald-800 dark:text-emerald-100 border-emerald-200/70 dark:border-emerald-500/40',
+  neutral: 'bg-slate-100 dark:bg-zinc-700/60 text-slate-700 dark:text-zinc-100 border-slate-200/70 dark:border-zinc-600',
+  mild: 'bg-orange-50 dark:bg-orange-400/15 text-orange-800 dark:text-orange-100 border-orange-200/70 dark:border-orange-500/40',
+  hard: 'bg-red-50 dark:bg-red-500/20 text-red-700 dark:text-red-100 border-red-200/70 dark:border-red-500/50',
+  slacker: 'bg-red-50 dark:bg-red-500/20 text-red-700 dark:text-red-100 border-red-200/70 dark:border-red-500/50',
 };
 
 export const TONE_LABELS: Record<RoastTone, string> = {

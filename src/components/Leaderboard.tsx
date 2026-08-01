@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, type MouseEvent as ReactMouseEven
 import { LeaderboardEntry, Metric, getMetricValue, formatMetric, formatDuration, getUserStats, TooltipStats } from '../api';
 import { Confetti } from './Confetti';
 import { useSound } from '../hooks/useSound';
-import { UserTooltip } from './UserTooltip';
+import { UserTooltip, MobileStatsPanel } from './UserTooltip';
 import {
   getRoast,
   computeBoardStats,
@@ -31,7 +31,11 @@ export function Leaderboard({ title, entries, metric = 'total', loading }: Leade
   const [animatedEntries, setAnimatedEntries] = useState<number[]>([]);
   const { playSound } = useSound();
 
-  // Hover card state (enka-style user stats tooltip)
+  // Hover card state (enka-style user stats tooltip) - desktop only
+  const isTouch = useMemo(
+    () => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches,
+    []
+  );
   const [hovered, setHovered] = useState<LeaderboardEntry | null>(null);
   const [hoverStats, setHoverStats] = useState<TooltipStats | null>(null);
   const [hoverLoading, setHoverLoading] = useState(false);
@@ -40,6 +44,12 @@ export function Leaderboard({ title, entries, metric = 'total', loading }: Leade
   const enterPointRef = useRef<{ x: number; y: number } | null>(null);
   const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Mobile accordion state - tap a row to expand its stats inline
+  const [expandedUserId, setExpandedUserId] = useState<number | null>(null);
+  const [expandedStats, setExpandedStats] = useState<TooltipStats | null>(null);
+  const [expandedLoading, setExpandedLoading] = useState(false);
+  const [expandedError, setExpandedError] = useState<string | null>(null);
 
   const clearOpenTimer = () => {
     if (openTimer.current) {
@@ -55,6 +65,7 @@ export function Leaderboard({ title, entries, metric = 'total', loading }: Leade
   };
 
   const handleMouseEnter = (entry: LeaderboardEntry, e: ReactMouseEvent<HTMLDivElement>) => {
+    if (isTouch) return;
     clearOpenTimer();
     clearCloseTimer();
     hoverRowRef.current = e.currentTarget;
@@ -69,6 +80,22 @@ export function Leaderboard({ title, entries, metric = 'total', loading }: Leade
         .catch((err: Error) => setHoverError(err.message))
         .finally(() => setHoverLoading(false));
     }, 180);
+  };
+
+  const handleRowClick = (entry: LeaderboardEntry) => {
+    if (!isTouch) return;
+    if (expandedUserId === entry.user_id) {
+      setExpandedUserId(null);
+      return;
+    }
+    setExpandedUserId(entry.user_id);
+    setExpandedLoading(true);
+    setExpandedError(null);
+    setExpandedStats(null);
+    getUserStats(entry.user_id)
+      .then((stats) => setExpandedStats(stats))
+      .catch((err: Error) => setExpandedError(err.message))
+      .finally(() => setExpandedLoading(false));
   };
 
   const handleMouseLeave = () => {
@@ -256,12 +283,14 @@ export function Leaderboard({ title, entries, metric = 'total', loading }: Leade
             const toneStyle = roast ? TONE_STYLES[roast.tone] : '';
 
             return (
+              <div key={entry.user_id} className={isTouch ? 'space-y-2' : ''}>
               <div
-                key={entry.user_id}
+                onClick={() => handleRowClick(entry)}
                 onMouseEnter={(e) => handleMouseEnter(entry, e)}
                 onMouseLeave={handleMouseLeave}
                 className={`
                   group flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl transition-all duration-200
+                  ${isTouch ? 'cursor-pointer select-none touch-manipulation' : ''}
                   ${isTop3 && !hasZeroValue ? 'bg-slate-50 dark:bg-zinc-800/50' : 'hover:bg-slate-50 dark:hover:bg-zinc-800/30'}
                   ${hasZeroValue ? 'opacity-60' : ''}
                   ${isAnimated ? 'animate-fadeInUp' : 'opacity-0'}
@@ -370,14 +399,37 @@ export function Leaderboard({ title, entries, metric = 'total', loading }: Leade
                     />
                   </div>
                 </div>
+
+                {/* Chevron hint (touch only) */}
+                {isTouch && (
+                  <svg
+                    className={`w-4 h-4 text-slate-400 dark:text-zinc-500 flex-shrink-0 transition-transform duration-200 ${
+                      expandedUserId === entry.user_id ? 'rotate-180' : ''
+                    }`}
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                  </svg>
+                )}
+              </div>
+
+              {/* Mobile inline accordion */}
+              {isTouch && expandedUserId === entry.user_id && (
+                <MobileStatsPanel
+                  entry={entry}
+                  stats={expandedStats}
+                  loading={expandedLoading}
+                  error={expandedError}
+                />
+              )}
               </div>
             );
           })}
         </div>
       )}
 
-      {/* Enka-style hover card */}
-      {hovered && (
+      {/* Enka-style hover card (desktop only; mobile uses the inline accordion) */}
+      {!isTouch && hovered && (
         <UserTooltip
           entry={hovered}
           stats={hoverStats}
