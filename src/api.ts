@@ -103,6 +103,78 @@ export interface TooltipStats {
   ai_tokens: { input: number; output: number; sessions: number; prompt_events: number };
 }
 
+/** Live WakaTime data fetched server-side for the profile page (best-effort). */
+export interface ProfileLiveData {
+  ok: boolean;
+  error: string | null;
+  fetchedAt: number | null;
+  me: Record<string, any> | null;
+  stats: Record<string, any> | null;
+  allTimeSinceToday: Record<string, any> | null;
+}
+
+export interface ProfileUser {
+  user_id: number;
+  wakatime_id: string;
+  username: string;
+  display_name: string | null;
+  email: string | null;
+  photo_url: string | null;
+  is_admin: boolean;
+  created_at: number;
+}
+
+export interface ProfileDailyRow {
+  date: string;
+  total_seconds: number;
+  ai_seconds: number;
+  human_seconds: number;
+  ai_lines: number;
+  human_lines: number;
+}
+
+/** Period-aggregated totals (daily / weekly / all-time) for the compare table */
+export interface CompareAggregates {
+  total_seconds: number;
+  human_seconds: number;
+  ai_seconds: number;
+  human_lines: number;
+  ai_lines: number;
+  total_lines: number;
+}
+
+/** Full payload from GET /api/user/:id/compare (DB-only comparison data) */
+export interface CompareStats {
+  user_id: number;
+  username: string;
+  display_name: string | null;
+  photo_url: string | null;
+  daily: CompareAggregates;
+  weekly: CompareAggregates;
+  all_time: CompareAggregates;
+  all_time_wakatime: number;
+  days_tracked: number;
+  days_active: number;
+  active_pct: number;
+  current_streak: number;
+  longest_streak: number;
+  best_day: { date: string; seconds: number } | null;
+  ai_tokens: { input: number; output: number; sessions: number; prompt_events: number };
+  top_ai_model: string | null;
+  ai_model_lines: number;
+  ai_model_cost: number;
+  top_language: string | null;
+  top_editor: string | null;
+  top_project: string | null;
+}
+
+/** Full profile payload from GET /api/profile/:username */
+export interface ProfileData {
+  user: ProfileUser;
+  db: TooltipStats & { daily: ProfileDailyRow[] };
+  live: ProfileLiveData;
+}
+
 // Session management
 export function getSession(): string | null {
   return localStorage.getItem('session');
@@ -185,6 +257,14 @@ class ApiClient {
     return this.request<TooltipStats>(`/user/${userId}/stats`);
   }
 
+  async getCompareStats(userId: number): Promise<CompareStats> {
+    return this.request<CompareStats>(`/user/${userId}/compare`);
+  }
+
+  async getProfile(username: string): Promise<ProfileData> {
+    return this.request<ProfileData>(`/profile/${encodeURIComponent(username)}`);
+  }
+
   // Admin endpoints
   async getUsers(): Promise<User[]> {
     return this.request<User[]>('/admin/users');
@@ -215,7 +295,7 @@ export const api = new ApiClient();
 
 // Browser-persisted cache for hover-card stats so re-hovers (and hovers on
 // a fresh page load) are instant. Refreshed in the background after syncs.
-const TOOLTIP_CACHE_KEY = 'wakalead:tooltip:v1';
+const TOOLTIP_CACHE_KEY = 'wakalead:tooltip:v2';
 const TOOLTIP_TTL_MS = 6 * 60 * 60 * 1000;
 
 interface CachedTooltip {

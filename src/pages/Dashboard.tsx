@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api, API_BASE, User, LeaderboardEntry, WeeklyData, Metric, METRICS, formatRelativeTime, prefetchTooltipStats } from '../api';
 import { Header } from '../components/Header';
 import { Leaderboard } from '../components/Leaderboard';
@@ -102,6 +103,7 @@ function UserMenu({ user, onLogout, onDelete }: { user: User; onLogout: () => vo
  * Main dashboard page - Clean, professional design
  */
 export function Dashboard() {
+  const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const [todayLeaderboard, setTodayLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [weekLeaderboard, setWeekLeaderboard] = useState<LeaderboardEntry[]>([]);
@@ -280,6 +282,23 @@ export function Dashboard() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
                   </svg>
                   {refreshing ? 'Syncing...' : 'Sync'}
+                </button>
+
+                <button
+                  onClick={() => navigate('/compare')}
+                  className="inline-flex items-center gap-2 px-3.5 py-2 text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl hover:border-slate-300 dark:hover:border-zinc-700 transition-colors active:scale-[0.97]"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5" />
+                    <line x1="13" y1="19" x2="19" y2="13" />
+                    <line x1="16" y1="16" x2="20" y2="20" />
+                    <line x1="19" y1="21" x2="21" y2="19" />
+                    <polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5" />
+                    <line x1="5" y1="14" x2="9" y2="18" />
+                    <line x1="7" y1="17" x2="4" y2="20" />
+                    <line x1="3" y1="19" x2="5" y2="21" />
+                  </svg>
+                  Feeling Competitive?
                 </button>
 
                 <UserMenu user={user} onLogout={handleLogout} onDelete={handleDeleteAccount} />

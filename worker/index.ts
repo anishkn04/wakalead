@@ -1,8 +1,9 @@
 import { Env } from './types';
-import { exchangeCodeForToken, fetchWakaTimeUser } from './wakatime';
-import { createOrUpdateUser, getLeaderboard, getWeeklyData, getAllUsers, deleteUser, banUser, unbanUser, getUserById, getLastSyncTime, getUserTooltipStats } from './database';
+import { exchangeCodeForToken, fetchWakaTimeUser, fetchPhotoData } from './wakatime';
+import { createOrUpdateUser, getLeaderboard, getWeeklyData, getAllUsers, deleteUser, banUser, unbanUser, getUserById, getLastSyncTime, getUserTooltipStats, getCompareStats, upsertUserPhoto } from './database';
 import { createSession, verifySession, deleteSession, extractSessionId } from './session';
-import { fetchDataForAllUsers, fetchTodayDataForUser, fetchWeekDataForUser, fetchTodayDataForAllUsers, fetchWeekDataForAllUsers } from './fetcher';
+import { fetchDataForAllUsers, fetchTodayDataForUser, fetchWeekDataForUser, fetchTodayDataForAllUsers, fetchWeekDataForAllUsers, fetchPhotosForAllUsers } from './fetcher';
+import { getProfileData } from './profile';
 
 /**
  * Main Cloudflare Worker
@@ -49,6 +50,35 @@ function jsonResponse(data: any, status = 200, cacheSeconds = 0) {
 
 function errorResponse(message: string, status = 400) {
   return jsonResponse({ error: message }, status);
+}
+
+/**
+ * Rewrite a stored WakaTime/Gravatar photo URL to our own photo endpoint so
+ * the browser never pings WakaTime for avatars. Photos are served from D1.
+ */
+function photoUrlFor(request: Request, userId: number, url: string | null): string | null {
+  if (!url) return null;
+  const origin = new URL(request.url).origin;
+  return `${origin}/api/user/${userId}/photo?v=2`;
+}
+
+/**
+ * Deterministic SVG avatar fallback (hue + initial) served when a user has a
+ * photo URL but no stored image bytes yet - avoids broken <img> tags.
+ */
+function placeholderPhoto(username: string): Response {
+  let hash = 0;
+  for (let i = 0; i < username.length; i++) hash = (hash * 31 + username.charCodeAt(i)) >>> 0;
+  const hue = hash % 360;
+  const initial = (username.charAt(0) || '?').toUpperCase();
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="hsl(${hue},60%,44%)"/><stop offset="100%" stop-color="hsl(${(hue + 40) % 360},60%,32%)"/></linearGradient></defs><rect width="96" height="96" fill="url(#g)"/><text x="48" y="61" font-family="Inter,Arial,sans-serif" font-size="40" font-weight="700" fill="rgba(255,255,255,0.94)" text-anchor="middle">${initial}</text></svg>`;
+  return new Response(svg, {
+    headers: {
+      'Content-Type': 'image/svg+xml',
+      'Cache-Control': 'public, max-age=86400, stale-while-revalidate=86400',
+      ...corsHeaders,
+    },
+  });
 }
 
 export default {
@@ -127,6 +157,15 @@ export default {
             photo_url: wakaUser.photo,
           });
 
+          // Download + store the avatar bytes so the browser never hits
+          // WakaTime for photos. Failure never blocks login.
+          try {
+            const photo = await fetchPhotoData(wakaUser.photo);
+            if (photo) await upsertUserPhoto(env, user.id, photo.data, photo.mime);
+          } catch (error: any) {
+            console.error('Error storing photo for user:', error?.message);
+          }
+
           // Check if user is banned
           if (user.is_banned) {
             const redirectUrl = new URL(env.FRONTEND_URL || 'https://wakalead.pages.dev');
@@ -199,7 +238,7 @@ export default {
           wakatime_id: user.wakatime_id,
           username: user.username,
           display_name: user.display_name,
-          photo_url: user.photo_url,
+          photo_url: photoUrlFor(request, user.id, user.photo_url),
           is_admin: user.is_admin === 1,
         });
       }
@@ -235,12 +274,12 @@ export default {
             wakatime_id: user.wakatime_id,
             username: user.username,
             display_name: user.display_name,
-            photo_url: user.photo_url,
+            photo_url: photoUrlFor(request, user.id, user.photo_url),
             is_admin: user.is_admin === 1,
           } : null,
-          today: todayLeaderboard,
-          week: weekLeaderboard,
-          weeklyData: { dates, users: weeklyData },
+          today: todayLeaderboard.map((e: any) => ({ ...e, photo_url: photoUrlFor(request, e.user_id, e.photo_url) })),
+          week: weekLeaderboard.map((e: any) => ({ ...e, photo_url: photoUrlFor(request, e.user_id, e.photo_url) })),
+          weeklyData: { dates, users: weeklyData.map((u: any) => ({ ...u, photo_url: photoUrlFor(request, u.user_id, u.photo_url) })) },
           lastSynced,
         }, 200, 0); // No browser caching - always fetch fresh data
       }
@@ -253,7 +292,59 @@ export default {
         if (!stats) {
           return errorResponse('User not found', 404);
         }
-        return jsonResponse(stats, 200, 0);
+        return jsonResponse({ ...stats, photo_url: photoUrlFor(request, stats.user_id, stats.photo_url) }, 200, 0);
+      }
+
+      // Compare stats for a single user - DB only, daily/weekly/all-time buckets
+      if (path.match(/^\/api\/user\/\d+\/compare$/)) {
+        const userId = parseInt(path.split('/')[3]);
+        const today = formatDate(getNepalDate());
+        const stats = await getCompareStats(env, userId, today);
+        if (!stats) {
+          return errorResponse('User not found', 404);
+        }
+        return jsonResponse({ ...stats, photo_url: photoUrlFor(request, stats.user_id, stats.photo_url) }, 200, 0);
+      }
+
+      // Avatar image - served from our DB so WakaTime is never pinged for
+      // photos anywhere except the profile page's live data fetch.
+      if (path.match(/^\/api\/user\/\d+\/photo$/)) {
+        const userId = parseInt(path.split('/')[3]);
+        const row = await env.DB.prepare(
+          'SELECT data, mime FROM user_photos WHERE user_id = ?'
+        ).bind(userId).first<{ data: ArrayBuffer; mime: string }>();
+
+        if (!row) {
+          const user = await env.DB.prepare(
+            'SELECT username FROM users WHERE id = ?'
+          ).bind(userId).first<{ username: string }>();
+          return placeholderPhoto(user?.username || String(userId));
+        }
+
+        const raw: any = row.data;
+        const bytes = typeof raw === 'string'
+          ? Uint8Array.from(raw.split(',').map(Number))
+          : new Uint8Array(raw);
+
+        return new Response(bytes, {
+          headers: {
+            'Content-Type': row.mime || 'image/jpeg',
+            'Cache-Control': 'public, max-age=3600, stale-while-revalidate=3600',
+            ...corsHeaders,
+          },
+        });
+      }
+
+      // Full public profile for a user - DB data + live WakaTime fetch
+      if (path.match(/^\/api\/profile\/.+$/)) {
+        const username = decodeURIComponent(path.slice('/api/profile/'.length)).replace(/^@/, '');
+        const profile = await getProfileData(env, username);
+        if (!profile) {
+          return errorResponse('User not found', 404);
+        }
+        profile.user.photo_url = photoUrlFor(request, profile.user.user_id, profile.user.photo_url);
+        profile.db.photo_url = photoUrlFor(request, profile.db.user_id, profile.db.photo_url);
+        return jsonResponse(profile, 200, 0);
       }
 
       // Protected routes - require authentication
@@ -284,7 +375,7 @@ export default {
         // Today's leaderboard - just fetch from database
         const today = formatDate(getNepalDate());
         const leaderboard = await getLeaderboard(env, today, today);
-        return jsonResponse(leaderboard);
+        return jsonResponse(leaderboard.map((e: any) => ({ ...e, photo_url: photoUrlFor(request, e.user_id, e.photo_url) })));
       }
 
       if (path === '/api/leaderboard/week') {
@@ -299,7 +390,7 @@ export default {
         const end = dates[dates.length - 1];
         
         const leaderboard = await getLeaderboard(env, start, end);
-        return jsonResponse(leaderboard);
+        return jsonResponse(leaderboard.map((e: any) => ({ ...e, photo_url: photoUrlFor(request, e.user_id, e.photo_url) })));
       }
 
       if (path === '/api/weekly-data') {
@@ -312,7 +403,7 @@ export default {
         }
 
         const weeklyData = await getWeeklyData(env, dates);
-        return jsonResponse({ dates, users: weeklyData });
+        return jsonResponse({ dates, users: weeklyData.map((u: any) => ({ ...u, photo_url: photoUrlFor(request, u.user_id, u.photo_url) })) });
       }
 
       // Admin routes
@@ -329,7 +420,7 @@ export default {
             username: u.username,
             display_name: u.display_name,
             email: u.email,
-            photo_url: u.photo_url,
+            photo_url: photoUrlFor(request, u.id, u.photo_url),
             is_admin: u.is_admin === 1,
             created_at: u.created_at,
           })));
@@ -355,6 +446,12 @@ export default {
           });
 
           return jsonResponse(newUser, 201);
+        }
+
+        if (path === '/api/admin/refresh-photos' && request.method === 'POST') {
+          // Backfill/refresh all users' avatar bytes from WakaTime now
+          await fetchPhotosForAllUsers(env);
+          return jsonResponse({ success: true, message: 'Photo refresh completed' });
         }
 
         if (path.match(/^\/api\/admin\/users\/\d+$/) && request.method === 'DELETE') {

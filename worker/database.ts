@@ -1,4 +1,4 @@
-import { Env, User, DailySummaryStats, DayBreakdown, TooltipStats, StatBreakdown } from './types';
+import { Env, User, DailySummaryStats, DayBreakdown, TooltipStats, StatBreakdown, CompareAggregates, CompareStats } from './types';
 
 /**
  * Database utilities for managing users and stats
@@ -115,6 +115,24 @@ export async function storeDailyStats(
     stats.human_lines,
     now
   ).run();
+}
+
+/**
+ * Store or update a user's avatar image bytes (downloaded from WakaTime /
+ * Gravatar). Kept in a separate table so `SELECT * FROM users` stays light.
+ */
+export async function upsertUserPhoto(
+  env: Env,
+  userId: number,
+  data: ArrayBuffer,
+  mime: string
+): Promise<void> {
+  await env.DB.prepare(`
+    INSERT INTO user_photos (user_id, data, mime, fetched_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(user_id)
+    DO UPDATE SET data = excluded.data, mime = excluded.mime, fetched_at = excluded.fetched_at
+  `).bind(userId, new Uint8Array(data), mime, Date.now()).run();
 }
 
 /**
@@ -584,6 +602,80 @@ export async function getUserTooltipStats(
       sessions: aiDaily?.sessions || 0,
       prompt_events: aiDaily?.prompt_events || 0,
     },
+  };
+}
+
+/** Sum a set of daily_stats rows into a CompareAggregates bucket. */
+function sumAggregates(rows: any[]): CompareAggregates {
+  const out: CompareAggregates = {
+    total_seconds: 0,
+    human_seconds: 0,
+    ai_seconds: 0,
+    human_lines: 0,
+    ai_lines: 0,
+    total_lines: 0,
+  };
+  for (const row of rows) {
+    out.total_seconds += row.total_seconds || 0;
+    out.human_seconds += row.human_seconds || 0;
+    out.ai_seconds += row.ai_seconds || 0;
+    out.human_lines += row.human_lines || 0;
+    out.ai_lines += row.ai_lines || 0;
+  }
+  out.total_lines = out.human_lines + out.ai_lines;
+  return out;
+}
+
+/**
+ * DB-only stats for the compare page: daily (today), weekly (last 7 days) and
+ * all-time buckets, plus streaks, best day, AI tokens and favorite items.
+ */
+export async function getCompareStats(
+  env: Env,
+  userId: number,
+  today: string
+): Promise<CompareStats | null> {
+  const user = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first<any>();
+  if (!user) return null;
+
+  const tooltip = await getUserTooltipStats(env, userId, today);
+
+  const dailyRes = await env.DB.prepare(`
+    SELECT date, total_seconds, ai_seconds, human_seconds, ai_lines, human_lines
+    FROM daily_stats WHERE user_id = ? ORDER BY date
+  `).bind(userId).all<any>();
+  const rows: any[] = dailyRes.results || [];
+
+  const todayRows = rows.filter((r) => r.date === today);
+  const weekStart = shiftDate(today, -6);
+  const weekRows = rows.filter((r) => r.date >= weekStart && r.date <= today);
+
+  const daysTracked = rows.length;
+  const daysActive = tooltip?.aggregates.days_active ?? 0;
+  const topModel = tooltip?.ai_models[0] ?? null;
+
+  return {
+    user_id: user.id,
+    username: user.username,
+    display_name: user.display_name,
+    photo_url: user.photo_url,
+    daily: sumAggregates(todayRows),
+    weekly: sumAggregates(weekRows),
+    all_time: sumAggregates(rows),
+    all_time_wakatime: tooltip?.all_time_seconds || 0,
+    days_tracked: daysTracked,
+    days_active: daysActive,
+    active_pct: daysTracked > 0 ? (daysActive / daysTracked) * 100 : 0,
+    current_streak: tooltip?.aggregates.current_streak || 0,
+    longest_streak: tooltip?.aggregates.longest_streak || 0,
+    best_day: tooltip?.aggregates.best_day ?? null,
+    ai_tokens: tooltip?.ai_tokens || { input: 0, output: 0, sessions: 0, prompt_events: 0 },
+    top_ai_model: topModel?.name ?? null,
+    ai_model_lines: topModel?.lines || 0,
+    ai_model_cost: topModel?.cost || 0,
+    top_language: tooltip?.top_language ?? null,
+    top_editor: tooltip?.top_editor ?? null,
+    top_project: tooltip?.top_project ?? null,
   };
 }
 

@@ -62,6 +62,54 @@ export async function fetchWakaTimeUser(accessToken: string): Promise<any> {
 }
 
 /**
+ * Download a user's avatar image bytes (WakaTime photo or Gravatar) so it
+ * can be stored in our DB and served without pinging WakaTime from the
+ * browser. Returns null when the URL is missing or unreachable.
+ */
+export async function fetchPhotoData(
+  url: string | null
+): Promise<{ data: ArrayBuffer; mime: string } | null> {
+  if (!url) return null;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const contentType = response.headers.get('content-type') || '';
+    const mime = contentType.startsWith('image/')
+      ? contentType.split(';')[0].trim()
+      : 'image/jpeg';
+    const data = await response.arrayBuffer();
+    if (!data.byteLength) return null;
+    return { data, mime };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch a user's all-time stats breakdown from WakaTime
+ * (languages, editors, operating systems, projects, categories,
+ * dependencies, machines, labels + grand totals). Backed by their cached
+ * stats; may return 202 while WakaTime is still computing them.
+ */
+export async function fetchWakaTimeAllTimeStats(accessToken: string): Promise<any> {
+  const response = await fetch(
+    `${WAKATIME_API_BASE}/users/current/stats/all_time`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch WakaTime all-time stats');
+  }
+
+  const data = await response.json();
+  return data.data;
+}
+
+/**
  * Fetch summaries for a specific date range
  * Returns total seconds coded for the date
  */

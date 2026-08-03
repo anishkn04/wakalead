@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent } from 'react';
-import { LeaderboardEntry, Metric, getMetricValue, formatMetric, formatDuration, getUserStats, TooltipStats } from '../api';
+import { useState, useEffect, useMemo } from 'react';
+import { LeaderboardEntry, Metric, getMetricValue, getUserStats, TooltipStats } from '../api';
 import { Confetti } from './Confetti';
 import { useSound } from '../hooks/useSound';
-import { UserTooltip, MobileStatsPanel } from './UserTooltip';
+import { StatsPanel } from './StatsPanel';
+import { LeaderboardCard } from './LeaderboardCard';
 import {
   getRoast,
   computeBoardStats,
@@ -11,8 +12,6 @@ import {
   getBoardCache,
   setBoardCache,
   boardSignature,
-  TONE_STYLES,
-  TONE_LABELS,
   RoastResult,
 } from '../roasts';
 
@@ -31,59 +30,13 @@ export function Leaderboard({ title, entries, metric = 'total', loading }: Leade
   const [animatedEntries, setAnimatedEntries] = useState<number[]>([]);
   const { playSound } = useSound();
 
-  // Hover card state (enka-style user stats tooltip) - desktop only
-  const isTouch = useMemo(
-    () => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches,
-    []
-  );
-  const [hovered, setHovered] = useState<LeaderboardEntry | null>(null);
-  const [hoverStats, setHoverStats] = useState<TooltipStats | null>(null);
-  const [hoverLoading, setHoverLoading] = useState(false);
-  const [hoverError, setHoverError] = useState<string | null>(null);
-  const hoverRowRef = useRef<HTMLDivElement | null>(null);
-  const enterPointRef = useRef<{ x: number; y: number } | null>(null);
-  const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Mobile accordion state - tap a row to expand its stats inline
+  // Accordion state - click a row to expand its stats inline (desktop + mobile)
   const [expandedUserId, setExpandedUserId] = useState<number | null>(null);
   const [expandedStats, setExpandedStats] = useState<TooltipStats | null>(null);
   const [expandedLoading, setExpandedLoading] = useState(false);
   const [expandedError, setExpandedError] = useState<string | null>(null);
 
-  const clearOpenTimer = () => {
-    if (openTimer.current) {
-      clearTimeout(openTimer.current);
-      openTimer.current = null;
-    }
-  };
-  const clearCloseTimer = () => {
-    if (closeTimer.current) {
-      clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
-  };
-
-  const handleMouseEnter = (entry: LeaderboardEntry, e: ReactMouseEvent<HTMLDivElement>) => {
-    if (isTouch) return;
-    clearOpenTimer();
-    clearCloseTimer();
-    hoverRowRef.current = e.currentTarget;
-    enterPointRef.current = { x: e.clientX, y: e.clientY };
-    openTimer.current = setTimeout(() => {
-      setHovered(entry);
-      setHoverLoading(true);
-      setHoverError(null);
-      setHoverStats(null);
-      getUserStats(entry.user_id)
-        .then((stats) => setHoverStats(stats))
-        .catch((err: Error) => setHoverError(err.message))
-        .finally(() => setHoverLoading(false));
-    }, 180);
-  };
-
   const handleRowClick = (entry: LeaderboardEntry) => {
-    if (!isTouch) return;
     if (expandedUserId === entry.user_id) {
       setExpandedUserId(null);
       return;
@@ -97,34 +50,6 @@ export function Leaderboard({ title, entries, metric = 'total', loading }: Leade
       .catch((err: Error) => setExpandedError(err.message))
       .finally(() => setExpandedLoading(false));
   };
-
-  const handleMouseLeave = () => {
-    clearOpenTimer();
-    clearCloseTimer();
-    closeTimer.current = setTimeout(() => setHovered(null), 120);
-  };
-
-  const keepOpen = () => clearCloseTimer();
-  const scheduleClose = () => {
-    clearCloseTimer();
-    closeTimer.current = setTimeout(() => setHovered(null), 120);
-  };
-
-  // Close the hover card when the page scrolls or the viewport resizes
-  useEffect(() => {
-    if (!hovered) return;
-    const close = () => {
-      clearOpenTimer();
-      clearCloseTimer();
-      setHovered(null);
-    };
-    window.addEventListener('scroll', close);
-    window.addEventListener('resize', close);
-    return () => {
-      window.removeEventListener('scroll', close);
-      window.removeEventListener('resize', close);
-    };
-  }, [hovered]);
 
   // Re-rank entries by the selected metric (e.g. Human, AI, AI Lines)
   const rankedEntries = useMemo(() => {
@@ -273,173 +198,36 @@ export function Leaderboard({ title, entries, metric = 'total', loading }: Leade
         <div className="space-y-1">
           {rankedEntries.map((entry) => {
             const roast = roastState.results[entry.user_id];
-            const hasZeroValue = entry.metricValue === 0;
-            const isAdmin = entry.is_admin === true;
-            const isTop3 = entry.rank <= 3;
-            const isAnimated = animatedEntries.includes(entry.user_id);
-            const maxValue = rankedEntries[0]?.metricValue || 1;
-            const humanPct = entry.total_seconds > 0 ? (entry.human_seconds / entry.total_seconds) * 100 : 0;
-            const aiPct = entry.total_seconds > 0 ? (entry.ai_seconds / entry.total_seconds) * 100 : 0;
-            const toneStyle = roast ? TONE_STYLES[roast.tone] : '';
+            const isExpanded = expandedUserId === entry.user_id;
 
             return (
-              <div key={entry.user_id} className={isTouch ? 'space-y-2' : ''}>
-              <div
-                onClick={() => handleRowClick(entry)}
-                onMouseEnter={(e) => handleMouseEnter(entry, e)}
-                onMouseLeave={handleMouseLeave}
-                className={`
-                  group flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl transition-all duration-200
-                  ${isTouch ? 'cursor-pointer select-none touch-manipulation' : ''}
-                  ${isTop3 && !hasZeroValue ? 'bg-slate-50 dark:bg-zinc-800/50' : 'hover:bg-slate-50 dark:hover:bg-zinc-800/30'}
-                  ${hasZeroValue ? 'opacity-60' : ''}
-                  ${isAnimated ? 'animate-fadeInUp' : 'opacity-0'}
-                `}
-                style={{ animationFillMode: 'forwards' }}
-              >
-                {/* Rank Badge */}
-                <div className={`
-                  flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm transition-transform duration-200 group-hover:scale-105
-                  ${entry.rank === 1 ? 'bg-gradient-to-br from-amber-400 to-amber-500 text-amber-900 shadow-lg shadow-amber-400/30' : ''}
-                  ${entry.rank === 2 ? 'bg-gradient-to-br from-slate-300 to-slate-400 text-slate-700 shadow-lg shadow-slate-400/20' : ''}
-                  ${entry.rank === 3 ? 'bg-gradient-to-br from-orange-300 to-orange-400 text-orange-800 shadow-lg shadow-orange-400/20' : ''}
-                  ${entry.rank > 3 ? 'bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-500' : ''}
-                `}>
-                  {entry.rank === 1 ? '👑' : entry.rank}
-                </div>
-
-                {/* Avatar */}
-                <div className="relative flex-shrink-0">
-                  {entry.photo_url ? (
-                    <img
-                      src={entry.photo_url}
-                      alt={entry.username}
-                      loading="lazy"
-                      className={`w-10 h-10 rounded-full object-cover ${entry.rank === 1 ? 'ring-2 ring-amber-400 ring-offset-2 ring-offset-white dark:ring-offset-zinc-900' : ''}`}
-                    />
-                  ) : (
-                    <div className={`w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-semibold text-sm ${entry.rank === 1 ? 'ring-2 ring-amber-400 ring-offset-2 ring-offset-white dark:ring-offset-zinc-900' : ''}`}>
-                      {entry.username.charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                  {/* Online indicator for top 3 */}
-                  {isTop3 && entry.metricValue > 0 && (
-                    <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white dark:border-zinc-900" />
-                  )}
-                </div>
-
-                {/* User Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className={`font-medium text-sm truncate ${entry.rank === 1 ? 'text-amber-700 dark:text-amber-400' : 'text-slate-900 dark:text-white'}`}>
-                      {entry.display_name || entry.username}
-                    </p>
-                    {entry.rank === 1 && <span className="flame text-sm">🔥</span>}
-                    {entry.rank === 2 && <span className="text-sm">⚡</span>}
-                    {entry.rank === 3 && <span className="text-sm">✨</span>}
-                    {isAdmin && (
-                      <span className="text-[10px] font-mono font-semibold bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-900">
-                        ADMIN
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-500 dark:text-zinc-500 truncate">
-                    @{entry.username}
-                  </p>
-                  {/* Roast Message Badge */}
-                  {roast && (
-                    <span
-                      className={`inline-block mt-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border ${toneStyle}`}
-                      title={`status: ${TONE_LABELS[roast.tone]}`}
-                    >
-                      {roast.text}
-                    </span>
-                  )}
-                  {/* AI vs Human split bar */}
-                  {entry.total_seconds > 0 && (
-                    <div className="mt-2 max-w-[240px]">
-                      <div className="flex h-1.5 rounded-full overflow-hidden bg-slate-200 dark:bg-zinc-700">
-                        <div className="bg-blue-500 transition-all duration-500" style={{ width: `${humanPct}%` }} />
-                        <div className="bg-violet-500 transition-all duration-500" style={{ width: `${aiPct}%` }} />
-                      </div>
-                      <div className="mt-1 flex items-center gap-3 text-[11px] text-slate-500 dark:text-zinc-500">
-                        <span className="flex items-center gap-1 tabular-nums">
-                          <span className="w-2 h-2 rounded-full bg-blue-500 inline-block flex-shrink-0" />
-                          <span>Human {formatDuration(entry.human_seconds)}</span>
-                        </span>
-                        <span className="flex items-center gap-1 tabular-nums">
-                          <span className="w-2 h-2 rounded-full bg-violet-500 inline-block flex-shrink-0" />
-                          <span>AI {formatDuration(entry.ai_seconds)}</span>
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Metric Value */}
-                <div className="text-right flex-shrink-0">
-                  <p className={`font-semibold text-sm tabular-nums ${
-                    entry.rank === 1 ? 'text-amber-700 dark:text-amber-400' :
-                    entry.rank === 2 ? 'text-slate-600 dark:text-slate-300' :
-                    entry.rank === 3 ? 'text-orange-600 dark:text-orange-400' :
-                    'text-slate-700 dark:text-zinc-300'
-                  }`}>
-                    {formatMetric(entry.metricValue, metric)}
-                  </p>
-                  {/* Progress bar for all entries */}
-                  <div className="w-16 h-1 bg-slate-200 dark:bg-zinc-700 rounded-full mt-1.5 overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-700 ${
-                        entry.rank === 1 ? 'bg-gradient-to-r from-amber-400 to-amber-500' :
-                        entry.rank === 2 ? 'bg-gradient-to-r from-slate-400 to-slate-500' :
-                        entry.rank === 3 ? 'bg-gradient-to-r from-orange-400 to-orange-500' :
-                        'bg-slate-400/60 dark:bg-zinc-600'
-                      }`}
-                      style={{ width: `${Math.max(hasZeroValue ? 0 : 4, Math.min(100, (entry.metricValue / maxValue) * 100))}%` }}
-                    />
-                  </div>
-                </div>
-
-                {/* Chevron hint (touch only) */}
-                {isTouch && (
-                  <svg
-                    className={`w-4 h-4 text-slate-400 dark:text-zinc-500 flex-shrink-0 transition-transform duration-200 ${
-                      expandedUserId === entry.user_id ? 'rotate-180' : ''
-                    }`}
-                    fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                  </svg>
-                )}
-              </div>
-
-              {/* Mobile inline accordion */}
-              {isTouch && expandedUserId === entry.user_id && (
-                <MobileStatsPanel
+              <div key={entry.user_id} className="space-y-2">
+                <LeaderboardCard
                   entry={entry}
-                  stats={expandedStats}
-                  loading={expandedLoading}
-                  error={expandedError}
+                  metric={metric}
+                  metricValue={entry.metricValue}
+                  roast={roast}
+                  expanded={isExpanded}
+                  animated={animatedEntries.includes(entry.user_id)}
+                  panelId={`lb-panel-${entry.user_id}`}
+                  onToggleExpand={() => handleRowClick(entry)}
                 />
-              )}
+
+                {/* Inline stats accordion (desktop + mobile) */}
+                {isExpanded && (
+                  <div id={`lb-panel-${entry.user_id}`}>
+                    <StatsPanel
+                      entry={entry}
+                      stats={expandedStats}
+                      loading={expandedLoading}
+                      error={expandedError}
+                    />
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
-      )}
-
-      {/* Enka-style hover card (desktop only; mobile uses the inline accordion) */}
-      {!isTouch && hovered && (
-        <UserTooltip
-          entry={hovered}
-          stats={hoverStats}
-          loading={hoverLoading}
-          error={hoverError}
-          anchorRef={hoverRowRef}
-          initialPoint={enterPointRef.current}
-          onCardEnter={keepOpen}
-          onCardLeave={scheduleClose}
-        />
       )}
     </div>
   );

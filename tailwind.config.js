@@ -7,6 +7,9 @@ export default {
   darkMode: 'class',
   theme: {
     extend: {
+      screens: {
+        'card': '480px',
+      },
       animation: {
         'fade-in-up': 'fade-in-up 0.5s ease-out forwards',
         'scale-pop': 'scale-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',

@@ -1,23 +1,8 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { createPortal } from 'react-dom';
+import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { LeaderboardEntry, TooltipStats, formatDuration, formatLines } from '../api';
 import { getLanguageIcon, languageHue } from '../languageIcons';
 import { getEditorIcon, getOsIcon } from '../stackIcons';
-
-interface UserTooltipProps {
-  entry: LeaderboardEntry;
-  stats: TooltipStats | null;
-  loading: boolean;
-  error: string | null;
-  anchorRef: RefObject<HTMLDivElement | null>;
-  initialPoint: { x: number; y: number } | null;
-  onCardEnter: () => void;
-  onCardLeave: () => void;
-}
-
-const WIDTH = 580;
-const MARGIN = 12;
-const OFFSET = 16;
 
 /** Deterministic hue from a username so each user gets a stable accent tint. */
 export function hashHue(str: string): number {
@@ -230,42 +215,14 @@ function Sparkline({
   );
 }
 
-function Skeleton() {
-  return (
-    <div className="w-[580px] max-w-[94vw] overflow-hidden rounded-2xl border border-white/10 bg-[#101014] shadow-2xl">
-      <div className="h-24 bg-zinc-800/60 animate-shimmer" />
-      <div className="grid grid-cols-2 divide-x divide-white/[0.06] p-4 gap-4">
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="space-y-3">
-            <div className="h-3 rounded bg-zinc-800/80 animate-shimmer" style={{ width: `${90 - i * 18}%` }} />
-            <div className="h-3 rounded bg-zinc-800/80 animate-shimmer" style={{ width: `${70 - i * 14}%` }} />
-            <div className="h-3 rounded bg-zinc-800/80 animate-shimmer" style={{ width: `${80 - i * 16}%` }} />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /**
- * Presentational stats card shared by the desktop hover tooltip and the
- * mobile inline accordion. `desktop` renders a compact 2-column grid with a
- * full-width Stack section; `mobile` splits the content into Overview and
- * Breakdown tabs so it fits a small screen without endless scrolling.
+ * Presentational stats card used inside the accordion (desktop + mobile).
+ * The header carries the user's identity, rank, all-time total, and the
+ * Profile / WakaTime actions. Overview and Breakdown are split into tabs so
+ * the card fits a small screen without endless scrolling.
  */
-export function UserTooltipContent({
-  stats,
-  hue,
-  rank,
-  variant = 'desktop',
-  maxHeight,
-}: {
-  stats: TooltipStats;
-  hue: number;
-  rank: number;
-  variant?: 'desktop' | 'mobile';
-  maxHeight?: number;
-}) {
+function UserTooltipContent({ stats, hue, rank }: { stats: TooltipStats; hue: number; rank: number }) {
+  const navigate = useNavigate();
   const total = stats.aggregates.total_seconds ?? 0;
   const humanPct = total > 0 ? Math.round(((stats.aggregates.human_seconds ?? 0) / total) * 100) : 0;
   const aiPct = total > 0 ? Math.round(((stats.aggregates.ai_seconds ?? 0) / total) * 100) : 0;
@@ -276,17 +233,20 @@ export function UserTooltipContent({
     stats.ai_models.length === 0;
 
   const [tab, setTab] = useState<'overview' | 'breakdown'>('overview');
+  const [photoFailed, setPhotoFailed] = useState(false);
   const meta = rankMeta(rank);
 
   const header = (
-    <div className="relative border-b border-white/[0.07] bg-[#17171d] px-4 pt-3 pb-2.5">
+    <div className="relative border-b border-white/[0.07] bg-[#17171d] px-4 pt-3 pb-3">
       <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: `hsl(${hue} 65% 50%)` }} />
       <div className="flex items-center gap-2.5">
-        {stats.photo_url ? (
+        {stats.photo_url && !photoFailed ? (
           <img
             src={stats.photo_url}
             alt={stats.username}
+            onError={() => setPhotoFailed(true)}
             className="w-9 h-9 rounded-full object-cover ring-2 ring-white/40 shadow-lg flex-shrink-0"
+            draggable={false}
           />
         ) : (
           <div className="w-9 h-9 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white font-bold text-base ring-2 ring-white/40 shadow-lg flex-shrink-0">
@@ -328,6 +288,30 @@ export function UserTooltipContent({
             year: 'numeric',
           })}
         </span>
+      </div>
+
+      <div className="relative mt-2.5 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => navigate(`/profile/@${stats.username}`)}
+          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[11px] font-semibold px-3 py-1.5 transition-colors"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+          </svg>
+          Profile
+        </button>
+        <a
+          href={`https://wakatime.com/@${stats.username}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[11px] font-semibold px-3 py-1.5 transition-colors"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+          </svg>
+          WakaTime
+        </a>
       </div>
     </div>
   );
@@ -371,7 +355,12 @@ export function UserTooltipContent({
         </StatCell>
         <StatCell label="Days active" align="right">
           {stats.aggregates.days_active}
-          <span className="text-white/50 text-xs font-medium"> / {stats.aggregates.days_tracked}</span>
+          <span className="text-white/50 text-xs font-medium">
+            {' / '}{stats.aggregates.days_tracked}
+            {stats.aggregates.days_tracked > 0
+              ? ` · ${Math.round((stats.aggregates.days_active / stats.aggregates.days_tracked) * 100)}%`
+              : ''}
+          </span>
         </StatCell>
         <StatCell label="Best day">
           {stats.aggregates.best_day
@@ -473,6 +462,7 @@ export function UserTooltipContent({
   const tabs = (
     <div className="flex border-b border-white/[0.06]">
       <button
+        type="button"
         onClick={() => setTab('overview')}
         className={`flex-1 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] transition-colors ${
           tab === 'overview' ? 'text-white border-b-2 border-white/70' : 'text-white/50'
@@ -481,6 +471,7 @@ export function UserTooltipContent({
         Overview
       </button>
       <button
+        type="button"
         onClick={() => setTab('breakdown')}
         className={`flex-1 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] transition-colors ${
           tab === 'breakdown' ? 'text-white border-b-2 border-white/70' : 'text-white/50'
@@ -491,63 +482,39 @@ export function UserTooltipContent({
     </div>
   );
 
-  if (variant === 'mobile') {
-    return (
-      <div>
-        {header}
-        {isEmpty ? (
-          emptyState
-        ) : (
-          <>
-            {tabs}
-            {tab === 'overview' ? (
-              <div className="flex flex-col [&>*+*]:border-t [&>*+*]:border-white/[0.06]">
-                {aiSplit}
-                {statGrid}
-                {sparklineBlock}
-              </div>
-            ) : (
-              <div className="flex flex-col [&>*+*]:border-t [&>*+*]:border-white/[0.06]">
-                {languagesBlock}
-                {stackBlock}
-                {projectsBlock}
-                {aiBlock}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    );
-  }
-
   return (
-    <div className="overflow-y-auto overflow-x-hidden" style={maxHeight ? { maxHeight } : undefined}>
+    <div>
       {header}
       {isEmpty ? (
         emptyState
       ) : (
         <>
-          <div className="grid grid-cols-2 divide-x divide-white/[0.06]">
+          {tabs}
+          {tab === 'overview' ? (
             <div className="flex flex-col [&>*+*]:border-t [&>*+*]:border-white/[0.06]">
               {aiSplit}
               {statGrid}
               {sparklineBlock}
             </div>
+          ) : (
             <div className="flex flex-col [&>*+*]:border-t [&>*+*]:border-white/[0.06]">
               {languagesBlock}
+              {stackBlock}
               {projectsBlock}
               {aiBlock}
             </div>
-          </div>
-          <div className="border-t border-white/[0.06]">{stackBlock}</div>
+          )}
         </>
       )}
     </div>
   );
 }
 
-/** Mobile accordion panel: loading/error wrapper around the shared content. */
-export function MobileStatsPanel({
+/**
+ * Inline accordion panel shown when a leaderboard row is expanded (works on
+ * desktop and mobile). Loading/error wrapper around the shared stats content.
+ */
+export function StatsPanel({
   entry,
   stats,
   loading,
@@ -576,111 +543,8 @@ export function MobileStatsPanel({
         </div>
       )}
       {!loading && !error && stats && (
-        <UserTooltipContent stats={stats} hue={hue} rank={entry.rank} variant="mobile" />
+        <UserTooltipContent stats={stats} hue={hue} rank={entry.rank} />
       )}
     </div>
-  );
-}
-
-/**
- * Enka.network-style hover card showing a user's overall WakaTime stats.
- * Always dark-glass so it pops on top of both app themes. Follows the pointer
- * inside the hovered row (keqingmains-style), flipping sides near the edges.
- * Desktop only - mobile uses the inline accordion (MobileStatsPanel).
- */
-export function UserTooltip({ entry, stats, loading, error, anchorRef, initialPoint, onCardEnter, onCardLeave }: UserTooltipProps) {
-  const hue = useMemo(() => hashHue(entry.username || String(entry.user_id)), [entry.username, entry.user_id]);
-
-  // Pointer position inside the hovered row (rAF-throttled)
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
-  const rafRef = useRef<number | null>(null);
-  const pendingPoint = useRef<{ x: number; y: number } | null>(null);
-
-  useLayoutEffect(() => {
-    const el = anchorRef.current;
-    if (!el) return;
-
-    // Start where the pointer entered the row, then follow it on move
-    const rect = el.getBoundingClientRect();
-    setPos(initialPoint ?? { x: rect.right, y: rect.top + rect.height / 2 });
-
-    const onMove = (e: MouseEvent) => {
-      pendingPoint.current = { x: e.clientX, y: e.clientY };
-      if (rafRef.current != null) return;
-      rafRef.current = requestAnimationFrame(() => {
-        rafRef.current = null;
-        setPos(pendingPoint.current);
-      });
-    };
-    const onLeave = () => {
-      if (rafRef.current != null) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
-    };
-
-    el.addEventListener('mousemove', onMove);
-    el.addEventListener('pointerleave', onLeave);
-    return () => {
-      el.removeEventListener('mousemove', onMove);
-      el.removeEventListener('pointerleave', onLeave);
-      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
-    };
-    // anchorRef.current changes when the hovered row switches, but the ref
-    // object stays the same - key off the user so the listeners re-attach
-    // and the card reseeds at the new row's pointer position.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [anchorRef, entry.user_id]);
-
-  const position = useMemo(() => {
-    if (!pos) return null;
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-
-    // Prefer the right of the pointer; flip to the left when out of room
-    let left = pos.x + OFFSET;
-    if (left + WIDTH > vw - MARGIN) {
-      left = pos.x - OFFSET - WIDTH;
-    }
-    left = Math.max(MARGIN, Math.min(left, vw - MARGIN - WIDTH));
-
-    // Slightly below the pointer, clamped so the card stays on screen
-    const top = Math.max(MARGIN, Math.min(pos.y + 10, vh - MARGIN - 140));
-
-    return { left, top, maxHeight: vh - MARGIN * 2 };
-  }, [pos]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCardLeave();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onCardLeave]);
-
-  if (!position) return null;
-
-  return createPortal(
-    <div
-      role="tooltip"
-      className="fixed z-[999] w-[580px] max-w-[94vw] overflow-hidden rounded-2xl border border-white/10 bg-[#101014]/95 backdrop-blur-xl shadow-[0_24px_60px_-12px_rgba(0,0,0,0.7)] animate-scaleIn"
-      style={{ left: position.left, top: position.top, maxHeight: position.maxHeight }}
-      onMouseEnter={onCardEnter}
-      onMouseLeave={onCardLeave}
-    >
-      {loading && <Skeleton />}
-
-      {!loading && error && (
-        <div className="px-4 py-6 text-sm text-white/60">
-          <p className="font-semibold text-white/80 mb-1">Couldn't load stats</p>
-          {error}
-        </div>
-      )}
-
-      {!loading && !error && stats && (
-        <UserTooltipContent stats={stats} hue={hue} rank={entry.rank} variant="desktop" maxHeight={position.maxHeight} />
-      )}
-    </div>,
-    document.body
   );
 }

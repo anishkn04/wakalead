@@ -553,14 +553,24 @@ function renderTemplate(text: string, ctx: RoastContext): string {
 // PUBLIC API
 // ------------------------------------------------------------------
 
+// Low-chroma sentiment tints (translucent fills + 1px border over the card
+// surface, contrast >= 4.5:1 in both themes). Seven tones collapse into three
+// groups so each card carries at most one muted roast accent.
+const ROAST_POS =
+  'bg-amber-500/10 dark:bg-amber-400/10 text-amber-700 dark:text-amber-200 border-amber-600/25 dark:border-amber-400/30';
+const ROAST_NEUTRAL =
+  'bg-slate-500/10 dark:bg-white/[0.06] text-slate-600 dark:text-zinc-300 border-slate-500/20 dark:border-white/15';
+const ROAST_NEG =
+  'bg-rose-500/10 dark:bg-rose-400/10 text-rose-700 dark:text-rose-200 border-rose-600/25 dark:border-rose-400/30';
+
 export const TONE_STYLES: Record<RoastTone, string> = {
-  god: 'bg-amber-50 dark:bg-amber-400/15 text-amber-800 dark:text-amber-100 border-amber-200/70 dark:border-amber-500/40',
-  praise: 'bg-amber-50 dark:bg-amber-400/15 text-amber-800 dark:text-amber-100 border-amber-200/70 dark:border-amber-500/40',
-  solid: 'bg-emerald-50 dark:bg-emerald-400/15 text-emerald-800 dark:text-emerald-100 border-emerald-200/70 dark:border-emerald-500/40',
-  neutral: 'bg-slate-100 dark:bg-zinc-700/60 text-slate-700 dark:text-zinc-100 border-slate-200/70 dark:border-zinc-600',
-  mild: 'bg-orange-50 dark:bg-orange-400/15 text-orange-800 dark:text-orange-100 border-orange-200/70 dark:border-orange-500/40',
-  hard: 'bg-red-50 dark:bg-red-500/20 text-red-700 dark:text-red-100 border-red-200/70 dark:border-red-500/50',
-  slacker: 'bg-red-50 dark:bg-red-500/20 text-red-700 dark:text-red-100 border-red-200/70 dark:border-red-500/50',
+  god: ROAST_POS,
+  praise: ROAST_POS,
+  solid: ROAST_POS,
+  neutral: ROAST_NEUTRAL,
+  mild: ROAST_NEUTRAL,
+  hard: ROAST_NEG,
+  slacker: ROAST_NEG,
 };
 
 export const TONE_LABELS: Record<RoastTone, string> = {

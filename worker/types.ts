@@ -146,3 +146,38 @@ export interface TooltipStats {
   ai_models: { name: string; lines: number; cost: number }[];
   ai_tokens: { input: number; output: number; sessions: number; prompt_events: number };
 }
+
+/** Period-aggregated totals (daily / weekly / all-time) for the compare table */
+export interface CompareAggregates {
+  total_seconds: number;
+  human_seconds: number;
+  ai_seconds: number;
+  human_lines: number;
+  ai_lines: number;
+  total_lines: number;
+}
+
+/** Payload served by GET /api/user/:id/compare (DB-only comparison data) */
+export interface CompareStats {
+  user_id: number;
+  username: string;
+  display_name: string | null;
+  photo_url: string | null;
+  daily: CompareAggregates;
+  weekly: CompareAggregates;
+  all_time: CompareAggregates;
+  all_time_wakatime: number;
+  days_tracked: number;
+  days_active: number;
+  active_pct: number;
+  current_streak: number;
+  longest_streak: number;
+  best_day: { date: string; seconds: number } | null;
+  ai_tokens: { input: number; output: number; sessions: number; prompt_events: number };
+  top_ai_model: string | null;
+  ai_model_lines: number;
+  ai_model_cost: number;
+  top_language: string | null;
+  top_editor: string | null;
+  top_project: string | null;
+}

@@ -7,6 +7,8 @@ import { setSession } from './api';
 // Lazy load pages for better initial load time
 const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const Login = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
+const Profile = lazy(() => import('./pages/Profile').then(m => ({ default: m.Profile })));
+const Compare = lazy(() => import('./pages/Compare').then(m => ({ default: m.Compare })));
 
 /**
  * Main App component
@@ -52,6 +54,8 @@ function App() {
         }>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/profile/:username" element={<Profile />} />
+            <Route path="/compare" element={<Compare />} />
             <Route path="/" element={<Dashboard />} />
           </Routes>
         </Suspense>

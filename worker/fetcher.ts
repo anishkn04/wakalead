@@ -6,6 +6,8 @@ import {
   parseTopStats,
   fetchAllTimeSinceToday,
   collectDayBreakdowns,
+  fetchWakaTimeUser,
+  fetchPhotoData,
 } from './wakatime';
 import {
   getAllUsers,
@@ -16,6 +18,7 @@ import {
   upsertUserStats,
   recentFetch,
   upsertDayBreakdowns,
+  upsertUserPhoto,
 } from './database';
 
 // Helper to get date in Nepal timezone (UTC+5:45)
@@ -33,6 +36,73 @@ function formatDate(date: Date): string {
 }
 
 const ALL_TIME_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Refresh a user's stored avatar bytes (from WakaTime/Gravatar) on every
+ * sync so the leaderboard always shows the latest profile picture. Purely
+ * server-side - the browser only ever loads avatars from our own photo
+ * endpoint. Failures are logged and swallowed.
+ */
+async function ensurePhoto(env: Env, userId: number, username: string, accessToken: string, fetchDate: string): Promise<void> {
+  try {
+    const wakaUser = await fetchWakaTimeUser(accessToken);
+    const photo = await fetchPhotoData(wakaUser?.photo || null);
+    if (photo) {
+      await upsertUserPhoto(env, userId, photo.data, photo.mime);
+      console.log(`Stored photo for ${username}`);
+    }
+    await logFetch(env, userId, 'photo', fetchDate, 'success');
+  } catch (error: any) {
+    console.error(`Error refreshing photo for ${username}:`, error);
+  }
+}
+
+/**
+ * Refresh stored avatar bytes for every user right now (admin-triggered
+ * backfill, also covers anyone missing from the daily cron). Uses each
+ * user's own access token, refreshing expired ones like the normal sync.
+ */
+export async function fetchPhotosForAllUsers(env: Env): Promise<void> {
+  const users = await getAllUsers(env);
+  console.log(`Refreshing photos for ${users.length} users`);
+  const fetchDate = formatDate(getNepalDate());
+
+  const BATCH_SIZE = 5;
+  for (let i = 0; i < users.length; i += BATCH_SIZE) {
+    const batch = users.slice(i, i + BATCH_SIZE);
+    await Promise.all(batch.map(async (user) => {
+      try {
+        let accessToken = user.access_token;
+        if (user.token_expires_at && user.token_expires_at < Date.now()) {
+          if (user.refresh_token) {
+            const tokenData = await refreshAccessToken(env, user.refresh_token);
+            accessToken = tokenData.access_token;
+            await createOrUpdateUser(env, {
+              wakatime_id: user.wakatime_id,
+              username: user.username,
+              display_name: user.display_name || undefined,
+              email: user.email || undefined,
+              access_token: tokenData.access_token,
+              refresh_token: tokenData.refresh_token,
+              token_expires_at: Date.now() + tokenData.expires_in * 1000,
+              photo_url: user.photo_url || undefined,
+            });
+          } else {
+            console.error(`Token expired and no refresh token for user ${user.username}`);
+            return;
+          }
+        }
+        await ensurePhoto(env, user.id, user.username, accessToken, fetchDate);
+      } catch (error: any) {
+        console.error(`Error refreshing photo for ${user.username}:`, error);
+      }
+    }));
+    if (i + BATCH_SIZE < users.length) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+  }
+  console.log('Photo refresh completed');
+}
 
 /**
  * Best-effort refresh of a user's lifetime coding seconds from the
@@ -134,6 +204,9 @@ export async function fetchDataForAllUsers(env: Env, useToday = false): Promise<
         // Refresh lifetime coding time at most once a week to stay gentle
         // on WakaTime rate limits.
         await ensureAllTimeStats(env, user.id, user.username, accessToken, dateStr);
+
+        // Refresh avatar bytes at most once a week (server-side only).
+        await ensurePhoto(env, user.id, user.username, accessToken, dateStr);
       } catch (error: any) {
         console.error(`Error updating user stats for ${user.username}:`, error);
       }
@@ -178,6 +251,7 @@ export async function fetchTodayDataForUser(
     try {
       await upsertUserStats(env, userId, parseTopStats([daySummary]));
       await ensureAllTimeStats(env, userId, `user-${userId}`, accessToken, today);
+      await ensurePhoto(env, userId, `user-${userId}`, accessToken, today);
     } catch (error: any) {
       console.error('Error updating user stats:', error);
     }
@@ -250,6 +324,13 @@ export async function fetchTodayDataForAllUsers(env: Env, forceRefresh = false):
         await storeDailyStats(env, user.id, today, stats);
         await upsertDayBreakdowns(env, user.id, today, collectDayBreakdowns(daySummary || {}));
         await logFetch(env, user.id, 'daily', today, 'success');
+
+        try {
+          await upsertUserStats(env, user.id, parseTopStats([daySummary]));
+          await ensurePhoto(env, user.id, user.username, accessToken, today);
+        } catch (error: any) {
+          console.error(`Error updating stats for ${user.username}:`, error);
+        }
       } catch (error: any) {
         console.error(`Error fetching today data for ${user.username}:`, error);
         await logFetch(env, user.id, 'daily', today, 'error', error.message);
@@ -387,6 +468,9 @@ export async function fetchWeekDataForAllUsers(env: Env): Promise<void> {
 
           // Refresh lifetime coding time (at most once a week per user)
           await ensureAllTimeStats(env, user.id, user.username, accessToken, endDate);
+
+          // Refresh avatar bytes (each sync keeps the leaderboard photo fresh)
+          await ensurePhoto(env, user.id, user.username, accessToken, endDate);
           
           await logFetch(env, user.id, 'weekly', endDate, 'success');
           console.log(`Successfully fetched week data for ${user.username}`);

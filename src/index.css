@@ -286,6 +286,75 @@ h1, h2, h3 {
 .delay-6 { animation-delay: 300ms; }
 
 /* ========================================
+   LEADERBOARD CARD - responsive layout + tokens
+   One component, one DOM tree. Desktop is a single
+   horizontal row; below 480px the identity cell's
+   children (name, roast, split) are pulled up into
+   the card grid via `display: contents` so the card
+   reflows into stacked Zone A..E rows.
+   ======================================== */
+
+:root {
+  /* Rank tier - used for the rank chip accent + primary metric color */
+  --lb-rank-1: #b45309; /* gold   */
+  --lb-rank-2: #64748b; /* silver */
+  --lb-rank-3: #c2410c; /* bronze */
+  --lb-rank-n: #71717a; /* muted  */
+  /* Human/AI split - used only in the bar + legend dots/labels */
+  --lb-human: #3b82f6;
+  --lb-ai: #8b5cf6;
+}
+
+.dark {
+  --lb-rank-1: #fbbf24;
+  --lb-rank-2: #cbd5e1;
+  --lb-rank-3: #fb923c;
+  --lb-rank-n: #a1a1aa;
+}
+
+.lb-row {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+  grid-template-areas: 'rank avatar identity metric chevron';
+  align-items: center;
+  column-gap: 1rem;
+  row-gap: 0.875rem;
+}
+
+.lb-rank { grid-area: rank; }
+.lb-avatar { grid-area: avatar; }
+.lb-identity { grid-area: identity; }
+.lb-meta { grid-area: identity; }
+.lb-roast { grid-area: roast; }
+.lb-split { grid-area: split; }
+.lb-metric { grid-area: metric; }
+.lb-chevron { grid-area: chevron; }
+
+.lb-text-1 { color: var(--lb-rank-1); }
+.lb-text-2 { color: var(--lb-rank-2); }
+.lb-text-3 { color: var(--lb-rank-3); }
+.lb-text-n { color: var(--lb-rank-n); }
+
+@media (max-width: 479.98px) {
+  .lb-row {
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'rank avatar identity chevron'
+      'roast roast roast roast'
+      'metric metric metric metric'
+      'split split split split';
+    column-gap: 0.75rem;
+    row-gap: 0.875rem;
+  }
+
+  /* Lift identity children (meta, roast, split) into the card grid so
+     each becomes a full-width zone; the identity box itself vanishes. */
+  .lb-identity {
+    display: contents;
+  }
+}
+
+/* ========================================
    CONFETTI CONTAINER
    ======================================== */
 

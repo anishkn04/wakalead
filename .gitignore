@@ -8,3 +8,5 @@ dist
 set-secrets.sh
 wrangler.real.toml
 wrangler.toml
+
+*.tsbuildinfo
