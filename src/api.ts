@@ -28,6 +28,8 @@ export interface LeaderboardEntry {
   top_project?: string | null;
   rank: number;
   is_admin?: boolean;
+  days_at_rank_one?: number;     // Total days at rank 1 (consistency)
+  rank_one_streak?: number;      // Current consecutive days at rank 1 (streak)
 }
 
 /** Metric used to rank / display coding activity */
@@ -231,26 +233,29 @@ class ApiClient {
     clearSession();
   }
 
-  async getTodayLeaderboard(): Promise<LeaderboardEntry[]> {
-    return this.request<LeaderboardEntry[]>('/leaderboard/today');
+  async getTodayLeaderboard(metric?: Metric): Promise<LeaderboardEntry[]> {
+    const params = metric ? `?metric=${metric}` : '';
+    return this.request<LeaderboardEntry[]>(`/leaderboard/today${params}`);
   }
 
-  async getWeekLeaderboard(): Promise<LeaderboardEntry[]> {
-    return this.request<LeaderboardEntry[]>('/leaderboard/week');
+  async getWeekLeaderboard(metric?: Metric): Promise<LeaderboardEntry[]> {
+    const params = metric ? `?metric=${metric}` : '';
+    return this.request<LeaderboardEntry[]>(`/leaderboard/week${params}`);
   }
 
   async getWeeklyData(): Promise<WeeklyData> {
     return this.request<WeeklyData>('/weekly-data');
   }
 
-  async getDashboard(): Promise<{
+  async getDashboard(metric?: Metric): Promise<{
     user: User | null;
     today: LeaderboardEntry[];
     week: LeaderboardEntry[];
     weeklyData: WeeklyData;
     lastSynced: number | null;
   }> {
-    return this.request('/dashboard');
+    const params = metric ? `?metric=${metric}` : '';
+    return this.request(`/dashboard${params}`);
   }
 
   async getUserStats(userId: number): Promise<TooltipStats> {

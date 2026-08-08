@@ -54,6 +54,18 @@ export function LeaderboardCard({
   const aiPct = totalSeconds > 0 ? (entry.ai_seconds / totalSeconds) * 100 : 0;
   const metricLabel = metric === 'lines' ? 'lines' : metric === 'total' ? 'total' : metric;
 
+  // Streak fire: show when rank is 1 AND streak > 1
+  const showStreakFire = rank === 1 && (entry.rank_one_streak || 0) > 1;
+  const streakCount = entry.rank_one_streak || 0;
+
+  // Consistency: total days at rank 1
+  const daysAtRankOne = entry.days_at_rank_one || 0;
+  const consistencyText = daysAtRankOne > 0
+    ? daysAtRankOne >= 7
+      ? `${Math.floor(daysAtRankOne / 7)}w`
+      : `${daysAtRankOne}d`
+    : '';
+
   return (
     <div
       onClick={onToggleExpand}
@@ -75,6 +87,11 @@ export function LeaderboardCard({
         aria-label={`Rank ${rank}`}
       >
         {rank === 1 ? '👑' : rank}
+        {showStreakFire && (
+          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0 rounded-full leading-none min-w-[18px] text-center">
+            🔥 {streakCount}
+          </span>
+        )}
       </div>
 
       {/* Zone A — avatar + online dot */}
@@ -127,6 +144,11 @@ export function LeaderboardCard({
             {isAdmin && (
               <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded border bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400">
                 ADMIN
+              </span>
+            )}
+            {consistencyText && (
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 whitespace-nowrap">
+                {consistencyText} at #1
               </span>
             )}
           </div>

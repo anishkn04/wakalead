@@ -19,6 +19,7 @@ import {
   recentFetch,
   upsertDayBreakdowns,
   upsertUserPhoto,
+  computeAndStoreDailyLeaderboard,
 } from './database';
 
 // Helper to get date in Nepal timezone (UTC+5:45)
@@ -219,6 +220,14 @@ export async function fetchDataForAllUsers(env: Env, useToday = false): Promise<
     }
   }
 
+  // Compute daily leaderboard rankings for all metrics after all users synced
+  try {
+    await computeAndStoreDailyLeaderboard(env, dateStr);
+    console.log(`Computed daily leaderboard for ${dateStr}`);
+  } catch (error: any) {
+    console.error(`Error computing daily leaderboard for ${dateStr}:`, error);
+  }
+
   console.log('Scheduled data fetch completed');
 }
 
@@ -343,6 +352,14 @@ export async function fetchTodayDataForAllUsers(env: Env, forceRefresh = false):
     }
   }
   
+  // Compute daily leaderboard rankings for today after all users synced
+  try {
+    await computeAndStoreDailyLeaderboard(env, today);
+    console.log(`Computed daily leaderboard for ${today}`);
+  } catch (error: any) {
+    console.error(`Error computing daily leaderboard for ${today}:`, error);
+  }
+
   console.log(`Completed fetching today's data for all users`);
 }
 
@@ -487,5 +504,15 @@ export async function fetchWeekDataForAllUsers(env: Env): Promise<void> {
     }
   }
   
+  // Compute daily leaderboard rankings for each date in the week
+  for (const date of dates) {
+    try {
+      await computeAndStoreDailyLeaderboard(env, date);
+      console.log(`Computed daily leaderboard for ${date}`);
+    } catch (error: any) {
+      console.error(`Error computing daily leaderboard for ${date}:`, error);
+    }
+  }
+
   console.log(`Completed fetching week data for all users`);
 }

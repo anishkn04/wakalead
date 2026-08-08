@@ -127,7 +127,7 @@ export function Dashboard() {
         setLoading(true);
       }
       
-      const data = await api.getDashboard();
+      const data = await api.getDashboard(metric);
       
       setUser(data.user);
       setTodayLeaderboard(data.today);

@@ -188,8 +188,18 @@ export async function upsertUserStats(
 export async function getLeaderboard(
   env: Env,
   startDate: string,
-  endDate: string
+  endDate: string,
+  metric: 'total' | 'human' | 'ai' | 'lines' = 'total',
+  today?: string
 ) {
+  const columnMap: Record<string, string> = {
+    total: 'total_seconds',
+    human: 'human_seconds',
+    ai: 'ai_seconds',
+    lines: 'ai_lines',
+  };
+  const orderColumn = columnMap[metric];
+
   const results = await env.DB.prepare(`
     SELECT 
       u.id as user_id,
@@ -212,14 +222,24 @@ export async function getLeaderboard(
     WHERE u.is_banned = 0
     GROUP BY u.id, u.username, u.display_name, u.photo_url, u.is_admin,
              us.all_time_seconds, us.top_language, us.top_editor, us.top_project
-    ORDER BY total_seconds DESC
+    ORDER BY ${orderColumn} DESC
   `).bind(startDate, endDate).all();
 
-  return results.results.map((row: any, index: number) => ({
+  const entries = results.results.map((row: any, index: number) => ({
     ...row,
     is_admin: row.is_admin === 1,
     rank: index + 1,
   }));
+
+  // If this is a single-day leaderboard (today), compute consistency and streak
+  if (startDate === endDate && today) {
+    for (const entry of entries) {
+      entry.days_at_rank_one = await getDaysAtRankOne(env, entry.user_id, metric);
+      entry.rank_one_streak = await getCurrentRankOneStreak(env, entry.user_id, metric, today);
+    }
+  }
+
+  return entries;
 }
 
 /**
@@ -677,5 +697,134 @@ export async function getCompareStats(
     top_editor: tooltip?.top_editor ?? null,
     top_project: tooltip?.top_project ?? null,
   };
+}
+
+/**
+ * Compute and store daily leaderboard rankings for all metrics for a given date.
+ * Call this after daily stats are synced for a date.
+ */
+export async function computeAndStoreDailyLeaderboard(
+  env: Env,
+  date: string
+): Promise<void> {
+  const metrics: Array<'total' | 'human' | 'ai' | 'lines'> = ['total', 'human', 'ai', 'lines'];
+  const now = Date.now();
+
+  for (const metric of metrics) {
+    const columnMap: Record<string, string> = {
+      total: 'total_seconds',
+      human: 'human_seconds',
+      ai: 'ai_seconds',
+      lines: 'ai_lines',
+    };
+    const column = columnMap[metric];
+
+    const results = await env.DB.prepare(`
+      SELECT 
+        u.id as user_id,
+        COALESCE(SUM(ds.${column}), 0) as metric_value
+      FROM users u
+      LEFT JOIN daily_stats ds ON u.id = ds.user_id AND ds.date = ?
+      WHERE u.is_banned = 0
+      GROUP BY u.id
+      ORDER BY metric_value DESC
+    `).bind(date).all<{ user_id: number; metric_value: number }>();
+
+    const statements: ReturnType<Env['DB']['prepare']>[] = [];
+    results.results.forEach((row, index) => {
+      const rank = index + 1;
+      statements.push(
+        env.DB.prepare(`
+          INSERT INTO daily_leaderboard (user_id, date, metric, rank)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(user_id, date, metric) DO UPDATE SET rank = excluded.rank
+        `).bind(row.user_id, date, metric, rank)
+      );
+    });
+
+    if (statements.length > 0) {
+      await env.DB.batch(statements);
+    }
+  }
+}
+
+/**
+ * Get total number of days a user has been at rank 1 for a given metric.
+ * This is the "consistency" metric - how many days they've topped the leaderboard.
+ */
+export async function getDaysAtRankOne(
+  env: Env,
+  userId: number,
+  metric: 'total' | 'human' | 'ai' | 'lines'
+): Promise<number> {
+  const columnMap: Record<string, string> = {
+    total: 'total_seconds',
+    human: 'human_seconds',
+    ai: 'ai_seconds',
+    lines: 'ai_lines',
+  };
+  const column = columnMap[metric];
+
+  // Only count days where the user actually had activity (metric_value > 0),
+  // otherwise all-zero days would hand a random user a bogus "day at #1".
+  const result = await env.DB.prepare(`
+    SELECT COUNT(*) as count
+    FROM daily_leaderboard dl
+    JOIN daily_stats ds ON ds.user_id = dl.user_id AND ds.date = dl.date
+    WHERE dl.user_id = ? AND dl.metric = ? AND dl.rank = 1 AND ds.${column} > 0
+  `).bind(userId, metric).first<{ count: number }>();
+
+  return result?.count || 0;
+}
+
+/**
+ * Get current consecutive days at rank 1 streak for a user for a given metric.
+ * Counts backwards from 'today' (inclusive) - if user is not rank 1 today, returns 0.
+ * Only counts days where the user actually has data (rank 1 with metric_value > 0).
+ */
+export async function getCurrentRankOneStreak(
+  env: Env,
+  userId: number,
+  metric: 'total' | 'human' | 'ai' | 'lines',
+  today: string
+): Promise<number> {
+  let streak = 0;
+  let cursor = today;
+
+  while (true) {
+    const row = await env.DB.prepare(`
+      SELECT rank
+      FROM daily_leaderboard
+      WHERE user_id = ? AND date = ? AND metric = ?
+    `).bind(userId, cursor, metric).first<{ rank: number }>();
+
+    if (!row || row.rank !== 1) {
+      break;
+    }
+
+    // Verify the user actually had activity that day (metric_value > 0)
+    const columnMap: Record<string, string> = {
+      total: 'total_seconds',
+      human: 'human_seconds',
+      ai: 'ai_seconds',
+      lines: 'ai_lines',
+    };
+    const column = columnMap[metric];
+
+    const statRow = await env.DB.prepare(`
+      SELECT ${column} as value
+      FROM daily_stats
+      WHERE user_id = ? AND date = ?
+    `).bind(userId, cursor).first<{ value: number }>();
+
+    if (!statRow || (statRow.value || 0) === 0) {
+      break;
+    }
+
+    streak += 1;
+    cursor = shiftDate(cursor, -1);
+  }
+
+  return streak;
 }
 

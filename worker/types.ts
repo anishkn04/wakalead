@@ -74,6 +74,8 @@ export interface LeaderboardEntry {
   top_project?: string | null;
   rank: number;
   is_admin?: boolean;
+  days_at_rank_one?: number;     // Total days at rank 1 (consistency)
+  rank_one_streak?: number;      // Current consecutive days at rank 1 (streak)
 }
 
 export interface WeeklyData {

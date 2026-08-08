@@ -249,6 +249,7 @@ export default {
         const user = await verifySession(env, request).catch(() => null);
         
         const today = formatDate(getNepalDate());
+        const metric = (url.searchParams.get('metric') as 'total' | 'human' | 'ai' | 'lines') || 'total';
         
         // Generate last 7 days dates
         const dates: string[] = [];
@@ -262,8 +263,8 @@ export default {
 
         // Fetch all data in parallel
         const [todayLeaderboard, weekLeaderboard, weeklyData, lastSynced] = await Promise.all([
-          getLeaderboard(env, today, today),
-          getLeaderboard(env, weekStart, weekEnd),
+          getLeaderboard(env, today, today, metric, today),
+          getLeaderboard(env, weekStart, weekEnd, metric),
           getWeeklyData(env, dates),
           getLastSyncTime(env),
         ]);
@@ -374,7 +375,8 @@ export default {
       if (path === '/api/leaderboard/today') {
         // Today's leaderboard - just fetch from database
         const today = formatDate(getNepalDate());
-        const leaderboard = await getLeaderboard(env, today, today);
+        const metric = (url.searchParams.get('metric') as 'total' | 'human' | 'ai' | 'lines') || 'total';
+        const leaderboard = await getLeaderboard(env, today, today, metric, today);
         return jsonResponse(leaderboard.map((e: any) => ({ ...e, photo_url: photoUrlFor(request, e.user_id, e.photo_url) })));
       }
 
@@ -388,8 +390,9 @@ export default {
         }
         const start = dates[0];
         const end = dates[dates.length - 1];
-        
-        const leaderboard = await getLeaderboard(env, start, end);
+        const metric = (url.searchParams.get('metric') as 'total' | 'human' | 'ai' | 'lines') || 'total';
+        // For weekly, we don't compute streak since it's a multi-day range
+        const leaderboard = await getLeaderboard(env, start, end, metric);
         return jsonResponse(leaderboard.map((e: any) => ({ ...e, photo_url: photoUrlFor(request, e.user_id, e.photo_url) })));
       }
 
