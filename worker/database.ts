@@ -816,6 +816,30 @@ function consecutiveCount(dates: string[], today: string): number {
   return count;
 }
 
+/** Monday (ISO week start) date key for a YYYY-MM-DD string. */
+function mondayOf(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const dow = (dt.getUTCDay() + 6) % 7; // 0 = Monday
+  dt.setUTCDate(dt.getUTCDate() - dow);
+  return dt.toISOString().slice(0, 10);
+}
+
+/**
+ * Count consecutive ISO weeks in `won` (Set of Monday date keys) ending at
+ * `today`. The current (possibly incomplete) week is the live proxy for its
+ * week-end.
+ */
+function consecutiveWeeks(won: Set<string>, today: string): number {
+  let cursor = mondayOf(today);
+  let count = 0;
+  while (won.has(cursor)) {
+    count += 1;
+    cursor = shiftDate(cursor, -7);
+  }
+  return count;
+}
+
 /**
  * Batch (no N+1) rank-one stats for every user for a metric:
  *  - consistency: total periods where the user was rank 1 with value > 0
@@ -823,6 +847,12 @@ function consecutiveCount(dates: string[], today: string): number {
  *
  * A period only counts when the user actually had activity (value > 0), so
  * all-zero days/weeks never hand out a bogus "#1".
+ *
+ * Weeks are tracked as daily rolling 7-day snapshots (one row per anchor day),
+ * so consistency/streaks collapse each calendar week to its final-day snapshot
+ * - whose 7-day window exactly equals that calendar week - and count a week
+ * only when that snapshot is rank 1. This makes "weeks at #1" real calendar
+ * weeks instead of counting every day the rolling board happened to be #1.
  */
 export async function getRankOneStats(
   env: Env,
@@ -839,7 +869,10 @@ export async function getRankOneStats(
     return s;
   };
 
-  // Consistency totals (full history).
+  // Consistency totals (full history). Weeks are counted per calendar week:
+  // each calendar week holds up to 7 rolling "week" snapshots (one per day),
+  // so we collapse them to the week's final-day snapshot - whose 7-day window
+  // exactly equals that calendar week - and only count rank 1 there.
   const [dayCounts, weekCounts] = await Promise.all([
     env.DB.prepare(`
       SELECT user_id, COUNT(*) as count
@@ -849,8 +882,16 @@ export async function getRankOneStats(
     `).bind(metric).all<{ user_id: number; count: number }>(),
     env.DB.prepare(`
       SELECT user_id, COUNT(*) as count
-      FROM leaderboard_history
-      WHERE period = 'week' AND metric = ? AND rank = 1 AND value > 0
+      FROM (
+        SELECT user_id, period_start, rank, value,
+          ROW_NUMBER() OVER (
+            PARTITION BY user_id, strftime('%Y-%W', period_start)
+            ORDER BY period_start DESC
+          ) AS rn
+        FROM leaderboard_history
+        WHERE period = 'week' AND metric = ?
+      )
+      WHERE rn = 1 AND rank = 1 AND value > 0
       GROUP BY user_id
     `).bind(metric).all<{ user_id: number; count: number }>(),
   ]);
@@ -888,16 +929,26 @@ export async function getRankOneStats(
     ensure(userId).day_streak = consecutiveCount(dates, today);
   }
 
-  const rankOneWeeks = new Map<number, string[]>();
+  const rankOneWeeks = new Map<number, Set<string>>();
+  const weekReps = new Map<number, Map<string, { period_start: string; rank: number; value: number }>>();
   for (const row of weekHistory.results) {
-    if (row.rank === 1 && (row.value || 0) > 0) {
-      const list = rankOneWeeks.get(row.user_id) || [];
-      list.push(row.period_start);
-      rankOneWeeks.set(row.user_id, list);
+    const wk = mondayOf(row.period_start);
+    const reps = weekReps.get(row.user_id) ?? new Map<string, { period_start: string; rank: number; value: number }>();
+    const cur = reps.get(wk);
+    if (!cur || row.period_start > cur.period_start) {
+      reps.set(wk, { period_start: row.period_start, rank: row.rank, value: row.value });
     }
+    weekReps.set(row.user_id, reps);
   }
-  for (const [userId, dates] of rankOneWeeks) {
-    ensure(userId).week_streak = consecutiveCount(dates, today);
+  for (const [userId, reps] of weekReps) {
+    const won = new Set<string>();
+    for (const [wk, rep] of reps) {
+      if (rep.rank === 1 && rep.value > 0) won.add(wk);
+    }
+    rankOneWeeks.set(userId, won);
+  }
+  for (const [userId, won] of rankOneWeeks) {
+    ensure(userId).week_streak = consecutiveWeeks(won, today);
   }
 
   return stats;
