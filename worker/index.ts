@@ -264,7 +264,7 @@ export default {
         // Fetch all data in parallel
         const [todayLeaderboard, weekLeaderboard, weeklyData, lastSynced] = await Promise.all([
           getLeaderboard(env, today, today, metric, today),
-          getLeaderboard(env, weekStart, weekEnd, metric),
+          getLeaderboard(env, weekStart, weekEnd, metric, today),
           getWeeklyData(env, dates),
           getLastSyncTime(env),
         ]);
@@ -391,8 +391,9 @@ export default {
         const start = dates[0];
         const end = dates[dates.length - 1];
         const metric = (url.searchParams.get('metric') as 'total' | 'human' | 'ai' | 'lines') || 'total';
-        // For weekly, we don't compute streak since it's a multi-day range
-        const leaderboard = await getLeaderboard(env, start, end, metric);
+        // Weekly board still carries per-user rank-one consistency/streak stats
+        const today = formatDate(getNepalDate());
+        const leaderboard = await getLeaderboard(env, start, end, metric, today);
         return jsonResponse(leaderboard.map((e: any) => ({ ...e, photo_url: photoUrlFor(request, e.user_id, e.photo_url) })));
       }
 

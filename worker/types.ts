@@ -75,7 +75,9 @@ export interface LeaderboardEntry {
   rank: number;
   is_admin?: boolean;
   days_at_rank_one?: number;     // Total days at rank 1 (consistency)
-  rank_one_streak?: number;      // Current consecutive days at rank 1 (streak)
+  weeks_at_rank_one?: number;    // Total weeks at rank 1 (consistency)
+  day_streak?: number;           // Current consecutive days at rank 1
+  week_streak?: number;          // Current consecutive weeks at rank 1
 }
 
 export interface WeeklyData {

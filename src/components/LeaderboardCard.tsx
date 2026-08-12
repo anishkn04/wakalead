@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { LeaderboardEntry, Metric, formatMetric, formatDuration } from '../api';
 import { RoastResult, TONE_STYLES, TONE_LABELS } from '../roasts';
+import { StreakPill } from './StreakBadge';
+
+export type LeaderboardPeriod = 'day' | 'week';
 
 interface LeaderboardCardProps {
   entry: LeaderboardEntry;
@@ -10,6 +13,7 @@ interface LeaderboardCardProps {
   expanded: boolean;
   animated: boolean;
   panelId: string;
+  period?: LeaderboardPeriod;
   onToggleExpand: () => void;
 }
 
@@ -17,12 +21,6 @@ const RANK_CHIP: Record<number, string> = {
   1: 'bg-gradient-to-br from-amber-400 to-amber-500 text-amber-900',
   2: 'bg-gradient-to-br from-slate-300 to-slate-400 text-slate-700',
   3: 'bg-gradient-to-br from-orange-300 to-orange-400 text-orange-800',
-};
-
-const RANK_EMOJI: Record<number, string> = {
-  1: '🔥',
-  2: '⚡',
-  3: '✨',
 };
 
 /**
@@ -39,6 +37,7 @@ export function LeaderboardCard({
   expanded,
   animated,
   panelId,
+  period = 'day',
   onToggleExpand,
 }: LeaderboardCardProps) {
   const rank = entry.rank;
@@ -54,17 +53,24 @@ export function LeaderboardCard({
   const aiPct = totalSeconds > 0 ? (entry.ai_seconds / totalSeconds) * 100 : 0;
   const metricLabel = metric === 'lines' ? 'lines' : metric === 'total' ? 'total' : metric;
 
-  // Streak fire: show when rank is 1 AND streak > 1
-  const showStreakFire = rank === 1 && (entry.rank_one_streak || 0) > 1;
-  const streakCount = entry.rank_one_streak || 0;
+  // Live streak: day tab shows the day-streak fire, week tab the week trophy.
+  // Only rank 1 can hold a streak, and it ignites from the 2nd consecutive
+  // period (day 1 at #1 shows the crown; day 2+ lights the pill).
+  const showStreak = rank === 1;
+  const streakIcon = period === 'week' ? 'trophy' : 'flame';
+  const streakCount = period === 'week' ? (entry.week_streak || 0) : (entry.day_streak || 0);
 
-  // Consistency: total days at rank 1
+  // Consistency: how many periods the user has been #1. Tab-matched so we
+  // never mix units — day tab shows days, week tab shows weeks.
   const daysAtRankOne = entry.days_at_rank_one || 0;
-  const consistencyText = daysAtRankOne > 0
-    ? daysAtRankOne >= 7
-      ? `${Math.floor(daysAtRankOne / 7)}w`
-      : `${daysAtRankOne}d`
+  const weeksAtRankOne = entry.weeks_at_rank_one || 0;
+  const consistencyCount = period === 'week' ? weeksAtRankOne : daysAtRankOne;
+  const consistencyUnit = period === 'week' ? 'w' : 'd';
+  const consistencyText = consistencyCount > 0
+    ? `${consistencyCount}${consistencyUnit} at #1`
     : '';
+  const consistencyLabel =
+    `Total time at rank #1: ${daysAtRankOne} day(s) and ${weeksAtRankOne} week(s)`;
 
   return (
     <div
@@ -87,11 +93,6 @@ export function LeaderboardCard({
         aria-label={`Rank ${rank}`}
       >
         {rank === 1 ? '👑' : rank}
-        {showStreakFire && (
-          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0 rounded-full leading-none min-w-[18px] text-center">
-            🔥 {streakCount}
-          </span>
-        )}
       </div>
 
       {/* Zone A — avatar + online dot */}
@@ -140,15 +141,27 @@ export function LeaderboardCard({
             <span className="text-[13px] card:text-xs font-medium text-slate-500 dark:text-zinc-500 min-w-0 [overflow-wrap:anywhere]">
               @{entry.username}
             </span>
-            {RANK_EMOJI[rank] && <span className="text-sm" aria-hidden="true">{RANK_EMOJI[rank]}</span>}
+            {showStreak && streakCount > 1 && (
+              <StreakPill
+                icon={streakIcon}
+                count={streakCount}
+                unit={period === 'week' ? 'w' : 'd'}
+                label={period === 'week'
+                  ? `Consecutive weeks at #1`
+                  : `Consecutive days at #1`}
+              />
+            )}
             {isAdmin && (
               <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded border bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400">
                 ADMIN
               </span>
             )}
             {consistencyText && (
-              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 whitespace-nowrap">
-                {consistencyText} at #1
+              <span
+                title={consistencyLabel}
+                className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 whitespace-nowrap"
+              >
+                {consistencyText}
               </span>
             )}
           </div>

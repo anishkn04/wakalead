@@ -381,6 +381,7 @@ export function Dashboard() {
               title=""
               entries={activeTab === 'today' ? todayLeaderboard : weekLeaderboard}
               metric={metric}
+              period={activeTab === 'today' ? 'day' : 'week'}
               loading={loading}
             />
           </div>

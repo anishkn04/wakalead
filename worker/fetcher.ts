@@ -20,6 +20,7 @@ import {
   upsertDayBreakdowns,
   upsertUserPhoto,
   computeAndStoreDailyLeaderboard,
+  computeAndStoreWeeklyLeaderboard,
 } from './database';
 
 // Helper to get date in Nepal timezone (UTC+5:45)
@@ -220,12 +221,14 @@ export async function fetchDataForAllUsers(env: Env, useToday = false): Promise<
     }
   }
 
-  // Compute daily leaderboard rankings for all metrics after all users synced
+  // Compute daily + weekly (trailing 7-day) leaderboard rankings for the
+  // synced date so consistency/streaks stay current.
   try {
     await computeAndStoreDailyLeaderboard(env, dateStr);
-    console.log(`Computed daily leaderboard for ${dateStr}`);
+    await computeAndStoreWeeklyLeaderboard(env, dateStr);
+    console.log(`Computed daily + weekly leaderboard for ${dateStr}`);
   } catch (error: any) {
-    console.error(`Error computing daily leaderboard for ${dateStr}:`, error);
+    console.error(`Error computing leaderboards for ${dateStr}:`, error);
   }
 
   console.log('Scheduled data fetch completed');
@@ -352,12 +355,13 @@ export async function fetchTodayDataForAllUsers(env: Env, forceRefresh = false):
     }
   }
   
-  // Compute daily leaderboard rankings for today after all users synced
+  // Compute daily + weekly leaderboard rankings for today after all users synced
   try {
     await computeAndStoreDailyLeaderboard(env, today);
-    console.log(`Computed daily leaderboard for ${today}`);
+    await computeAndStoreWeeklyLeaderboard(env, today);
+    console.log(`Computed daily + weekly leaderboard for ${today}`);
   } catch (error: any) {
-    console.error(`Error computing daily leaderboard for ${today}:`, error);
+    console.error(`Error computing leaderboards for ${today}:`, error);
   }
 
   console.log(`Completed fetching today's data for all users`);
@@ -504,13 +508,15 @@ export async function fetchWeekDataForAllUsers(env: Env): Promise<void> {
     }
   }
   
-  // Compute daily leaderboard rankings for each date in the week
+  // Compute daily + weekly leaderboard rankings for each date in the week
+  // (each date is the anchor of its own trailing 7-day window).
   for (const date of dates) {
     try {
       await computeAndStoreDailyLeaderboard(env, date);
-      console.log(`Computed daily leaderboard for ${date}`);
+      await computeAndStoreWeeklyLeaderboard(env, date);
+      console.log(`Computed daily + weekly leaderboard for ${date}`);
     } catch (error: any) {
-      console.error(`Error computing daily leaderboard for ${date}:`, error);
+      console.error(`Error computing leaderboards for ${date}:`, error);
     }
   }
 

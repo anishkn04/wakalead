@@ -14,18 +14,20 @@ import {
   boardSignature,
   RoastResult,
 } from '../roasts';
+import { LeaderboardPeriod } from './LeaderboardCard';
 
 interface LeaderboardProps {
   title: string;
   entries: LeaderboardEntry[];
   metric?: Metric;
+  period?: LeaderboardPeriod;
   loading?: boolean;
 }
 
 /**
  * Leaderboard component - clean, professional, roast engine powered
  */
-export function Leaderboard({ title, entries, metric = 'total', loading }: LeaderboardProps) {
+export function Leaderboard({ title, entries, metric = 'total', period = 'day', loading }: LeaderboardProps) {
   const [showConfetti, setShowConfetti] = useState(false);
   const [animatedEntries, setAnimatedEntries] = useState<number[]>([]);
   const { playSound } = useSound();
@@ -210,6 +212,7 @@ export function Leaderboard({ title, entries, metric = 'total', loading }: Leade
                   expanded={isExpanded}
                   animated={animatedEntries.includes(entry.user_id)}
                   panelId={`lb-panel-${entry.user_id}`}
+                  period={period}
                   onToggleExpand={() => handleRowClick(entry)}
                 />
 
