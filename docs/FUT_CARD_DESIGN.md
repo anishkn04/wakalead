@@ -44,13 +44,21 @@ to them.
 | **PAS** | `distinct(project) + distinct(language)` | Breadth across contexts |
 | **DRI** | `distinct(editor) + distinct(os)` | Tool versatility |
 | **DEF** | `days_active / days_tracked` | Consistency ratio - can't be padded by one big session |
-| **PHY** | `longest_streak` (consecutive calendar days with activity) | Stamina |
+| **PHY** | 60% `longest_streak` + 40% `MAX(project_seconds)` (each percentile-ranked separately, then blended) | Stamina - both day-streak endurance and sustained commitment to one project |
 
 `days_active` = distinct dates with `total_seconds > 0`. `days_tracked` =
 distinct dates with any synced row at all (denominator for DEF).
 
 Every raw value above is computed **per user**, across the whole cohort of
 users with any data in scope, before the percentile step runs.
+
+**PHY is a blend, not a single raw metric** - day-streak and single-project
+seconds live on wildly different scales (small integer vs. potentially
+huge), so they can't just be summed like PAS/DRI can. Instead each is
+percentile-ranked against the cohort *independently*, then the two
+percentiles are combined 60/40 (streak/project) before the one final
+rescale into 0-99 - keeps both sub-metrics "relative, not absolute" on
+their own terms before they're blended.
 
 ## Percentile -> 0-99 scale
 

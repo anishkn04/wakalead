@@ -19,7 +19,7 @@ SHO = shooting/output.)
 | **PAS** | `distinct(project) + distinct(language)` - breadth |
 | **DRI** | `distinct(editor) + distinct(os)` - tool versatility |
 | **DEF** | `days_active / days_tracked` - consistency ratio |
-| **PHY** | `longest_streak` (consecutive calendar days) - stamina |
+| **PHY** | 60% `longest_streak` + 40% `MAX(project_seconds)`, each percentile-ranked separately then blended - stamina (day-streak endurance + sustained project commitment) |
 
 A day only counts toward DEF/PHY at **40+ active minutes**
 (`total_seconds >= 2400`), not just nonzero.

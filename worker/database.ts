@@ -1267,8 +1267,9 @@ interface RawUserCardMetrics {
   distinct_languages: number;
   distinct_editors: number;
   distinct_os: number;
-  recentActivity: number; // combined time_score + output_score, last 7 days
-  priorActivity: number;  // combined time_score + output_score, the 7 days before that
+  recentActivity: number;  // combined time_score + output_score, last 7 days
+  priorActivity: number;   // combined time_score + output_score, the 7 days before that
+  maxProjectSeconds: number; // total time on their single biggest project (in scope)
 }
 
 export interface NextTierHint {
@@ -1373,8 +1374,8 @@ async function getCardMetricsForAllUsers(env: Env, scope: CardScope, today: stri
       }>()
     )),
     Promise.all(breakdownTables.map((t) =>
-      env.DB.prepare(`SELECT user_id, kind, name FROM ${t} WHERE kind IN ('project','language','editor','os')`).all<{
-        user_id: number; kind: string; name: string;
+      env.DB.prepare(`SELECT user_id, kind, name, seconds FROM ${t} WHERE kind IN ('project','language','editor','os')`).all<{
+        user_id: number; kind: string; name: string; seconds: number;
       }>()
     )),
   ]);
@@ -1389,7 +1390,7 @@ async function getCardMetricsForAllUsers(env: Env, scope: CardScope, today: stri
       m = {
         time_score: 0, output_score: 0, days_active: 0, days_tracked: 0, longest_streak: 0,
         distinct_projects: 0, distinct_languages: 0, distinct_editors: 0, distinct_os: 0,
-        recentActivity: 0, priorActivity: 0,
+        recentActivity: 0, priorActivity: 0, maxProjectSeconds: 0,
       };
       byUser.set(userId, m);
     }
@@ -1418,11 +1419,18 @@ async function getCardMetricsForAllUsers(env: Env, scope: CardScope, today: stri
   }
 
   const distinctSets = new Map<number, Record<'project' | 'language' | 'editor' | 'os', Set<string>>>();
+  const projectSecondsByUser = new Map<number, Map<string, number>>();
   for (const row of breakdownRows.results) {
     const kind = row.kind as 'project' | 'language' | 'editor' | 'os';
     const sets = distinctSets.get(row.user_id) ?? { project: new Set(), language: new Set(), editor: new Set(), os: new Set() };
     sets[kind]?.add(row.name);
     distinctSets.set(row.user_id, sets);
+
+    if (kind === 'project') {
+      const projects = projectSecondsByUser.get(row.user_id) ?? new Map<string, number>();
+      projects.set(row.name, (projects.get(row.name) ?? 0) + (row.seconds || 0));
+      projectSecondsByUser.set(row.user_id, projects);
+    }
   }
   for (const [userId, sets] of distinctSets) {
     const m = ensure(userId);
@@ -1430,6 +1438,9 @@ async function getCardMetricsForAllUsers(env: Env, scope: CardScope, today: stri
     m.distinct_languages = sets.language.size;
     m.distinct_editors = sets.editor.size;
     m.distinct_os = sets.os.size;
+  }
+  for (const [userId, projects] of projectSecondsByUser) {
+    ensure(userId).maxProjectSeconds = Math.max(0, ...projects.values());
   }
 
   return byUser;
@@ -1515,13 +1526,15 @@ export async function computeCardsForAllUsers(env: Env, scope: CardScope, today:
   const raw = await getCardMetricsForAllUsers(env, scope, today);
   const userIds = [...raw.keys()];
 
-  const dimensions: Array<{ key: 'pac' | 'sho' | 'pas' | 'dri' | 'def' | 'phy'; extract: (m: RawUserCardMetrics) => number }> = [
+  // PHY is handled separately below (a blend of two differently-scaled raw
+  // metrics - streak days vs. project seconds - so each needs its own
+  // percentile pass before they can be combined).
+  const dimensions: Array<{ key: 'pac' | 'sho' | 'pas' | 'dri' | 'def'; extract: (m: RawUserCardMetrics) => number }> = [
     { key: 'pac', extract: (m) => m.time_score },
     { key: 'sho', extract: (m) => m.output_score },
     { key: 'pas', extract: (m) => m.distinct_projects + m.distinct_languages },
     { key: 'dri', extract: (m) => m.distinct_editors + m.distinct_os },
     { key: 'def', extract: (m) => (m.days_tracked > 0 ? m.days_active / m.days_tracked : 0) },
-    { key: 'phy', extract: (m) => m.longest_streak },
   ];
 
   const ratingsByUser = new Map<number, Record<string, number>>();
@@ -1534,6 +1547,17 @@ export async function computeCardsForAllUsers(env: Env, scope: CardScope, today:
       ratingsByUser.set(id, r);
     });
   }
+
+  // PHY (stamina) = 60% consecutive-day streak, 40% time sunk into their
+  // single biggest project - two forms of "staying power," ranked
+  // independently against the cohort (wildly different raw scales: days
+  // vs. seconds) then blended as percentiles, rescaled once at the end.
+  const streakPercentiles = percentileRanks(userIds.map((id) => raw.get(id)!.longest_streak));
+  const projectPercentiles = percentileRanks(userIds.map((id) => raw.get(id)!.maxProjectSeconds));
+  userIds.forEach((id, i) => {
+    const blended = 0.6 * streakPercentiles[i] + 0.4 * projectPercentiles[i];
+    ratingsByUser.get(id)!.phy = rescale(blended);
+  });
 
   const overallByUser = new Map<number, number>();
   for (const id of userIds) {
