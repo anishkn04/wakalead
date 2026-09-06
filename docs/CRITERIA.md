@@ -1,25 +1,25 @@
 # FUT card criteria - current state
 
-Snapshot of exactly what's implemented right now in `worker/database.ts`,
-as of `main` (includes the `fix: swap sho and pac` commit). For the full
-design rationale, see `docs/FUT_CARD_DESIGN.md` - this doc is just "what
-the numbers are today," kept short and current.
+Snapshot of exactly what's implemented right now in `worker/database.ts`.
+For the full design rationale, see `docs/FUT_CARD_DESIGN.md` - this doc is
+just "what the numbers are today," kept short and current.
+
+(History note: a `fix: swap sho and pac` commit briefly swapped what PAC
+and SHO measure, but that read backwards from standard FIFA convention -
+"pace" mapping to line-count didn't make sense - so it was reverted. The
+table below is the original, standard-convention mapping: PAC = pace/time,
+SHO = shooting/output.)
 
 ## The 6 attributes
 
 | Stat | Raw metric (before percentile ranking) |
 |---|---|
-| **PAC** | `SUM(human_lines) + 0.7 * SUM(ai_lines)` - output/lines written |
-| **SHO** | `SUM(human_seconds)` - active coding time |
+| **PAC** | `SUM(human_seconds) + 0.7 * SUM(ai_seconds)` - active coding time |
+| **SHO** | `SUM(human_lines) + 0.7 * SUM(ai_lines)` - output/lines written |
 | **PAS** | `distinct(project) + distinct(language)` - breadth |
 | **DRI** | `distinct(editor) + distinct(os)` - tool versatility |
 | **DEF** | `days_active / days_tracked` - consistency ratio |
 | **PHY** | `longest_streak` (consecutive calendar days) - stamina |
-
-**Note:** PAC/SHO were swapped from the original design (`fix: swap sho
-and pac`) - PAC now means output, SHO now means time. This is the
-opposite of standard FIFA convention (Pace=speed, Shooting=output), but
-it's what's actually live right now.
 
 A day only counts toward DEF/PHY at **40+ active minutes**
 (`total_seconds >= 2400`), not just nonzero.
@@ -52,9 +52,9 @@ Weighted blend of the 6 attributes, highest score wins:
 
 | Position | Weighting |
 |---|---|
-| ST | PAC 45% - SHO 25% - DRI 15% - PHY 10% - PAS 5% |
-| RW / LW | SHO 35% - DRI 30% - PAC 20% - PAS 15% |
-| CAM | PAS 40% - DRI 30% - PAC 20% - SHO 10% |
+| ST | SHO 45% - PAC 25% - DRI 15% - PHY 10% - PAS 5% |
+| RW / LW | PAC 35% - DRI 30% - SHO 20% - PAS 15% |
+| CAM | PAS 40% - DRI 30% - SHO 20% - PAC 10% |
 | CM | PAS 30% - PHY 25% - DRI 20% - DEF 15% - PAC 10% |
 | CDM | DEF 40% - PHY 30% - PAS 20% - DRI 10% |
 | LM / RM | PAC 30% - PAS 30% - DRI 25% - DEF 15% |
@@ -67,10 +67,8 @@ single **lowest overall** in the cohort.
 Left/right pairs (RW/LW, LM/RM, RB/LB) always tie on our data; broken by a
 deterministic hash of the user's id.
 
-These weights use the current PAC/SHO meanings (PAC = output, SHO = active
-time) - e.g. ST is weighted toward PAC (output/scoring) with some SHO
-(pace/time), matching real striker logic. (Previously inconsistent with
-the swap above; fixed.)
+A striker (ST) is weighted toward SHO (output/scoring) with some PAC
+(pace/speed) - standard striker logic, matching the original convention.
 
 ## Provisional
 

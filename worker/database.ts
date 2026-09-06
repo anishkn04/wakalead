@@ -1247,18 +1247,18 @@ export async function getUserSeasonHistory(env: Env, userId: number): Promise<Us
  * anyone hit some fixed number of hours. See docs/FUT_CARD_DESIGN.md for
  * the full design rationale, gaming-vector analysis, and decision log.
  *
- * PAC/SHO deliberately use human_lines/human_seconds (not totals) so
- * someone can't inflate their card by leaving an AI agent running for a
- * long "session" without doing the work themselves - ai_lines still count
- * toward PAC, just discounted. PAS/DRI/DEF/PHY are diversity counts or
- * ratios by nature, already immune to that kind of padding.
+ * This app is AI-native - AI-assisted work isn't something to suppress,
+ * so PAC/SHO count both human and AI time/lines, just with AI weighted at
+ * 0.7x (directing an AI well is a real skill, just not quite the same as
+ * doing it yourself). PAS/DRI/DEF/PHY are diversity counts or ratios by
+ * nature and don't need this distinction at all.
  */
 export type CardScope = 'season' | 'career';
 export type CardType = 'icon' | 'legend_hero' | 'white_icon' | 'featured_red' | 'base_gold' | 'base_silver';
 export type CardPosition = 'ST' | 'RW' | 'LW' | 'CAM' | 'CM' | 'CDM' | 'LM' | 'RM' | 'CB' | 'RB' | 'LB' | 'GK';
 
 interface RawUserCardMetrics {
-  human_seconds: number;
+  time_score: number;   // human_seconds + 0.7 * ai_seconds
   output_score: number; // human_lines + 0.7 * ai_lines
   days_active: number;  // days with >= CARD_ACTIVE_SECONDS of total_seconds
   days_tracked: number; // days with any synced row at all
@@ -1354,8 +1354,8 @@ async function getCardMetricsForAllUsers(env: Env, scope: CardScope): Promise<Ma
 
   const [dailyResults, breakdownResults] = await Promise.all([
     Promise.all(dailyTables.map((t) =>
-      env.DB.prepare(`SELECT user_id, date, total_seconds, human_seconds, ai_lines, human_lines FROM ${t}`).all<{
-        user_id: number; date: string; total_seconds: number; human_seconds: number; ai_lines: number; human_lines: number;
+      env.DB.prepare(`SELECT user_id, date, total_seconds, human_seconds, ai_seconds, ai_lines, human_lines FROM ${t}`).all<{
+        user_id: number; date: string; total_seconds: number; human_seconds: number; ai_seconds: number; ai_lines: number; human_lines: number;
       }>()
     )),
     Promise.all(breakdownTables.map((t) =>
@@ -1373,7 +1373,7 @@ async function getCardMetricsForAllUsers(env: Env, scope: CardScope): Promise<Ma
     let m = byUser.get(userId);
     if (!m) {
       m = {
-        human_seconds: 0, output_score: 0, days_active: 0, days_tracked: 0, longest_streak: 0,
+        time_score: 0, output_score: 0, days_active: 0, days_tracked: 0, longest_streak: 0,
         distinct_projects: 0, distinct_languages: 0, distinct_editors: 0, distinct_os: 0,
       };
       byUser.set(userId, m);
@@ -1384,7 +1384,7 @@ async function getCardMetricsForAllUsers(env: Env, scope: CardScope): Promise<Ma
   const activeDatesByUser = new Map<number, string[]>();
   for (const row of dailyRows.results) {
     const m = ensure(row.user_id);
-    m.human_seconds += row.human_seconds || 0;
+    m.time_score += (row.human_seconds || 0) + 0.7 * (row.ai_seconds || 0);
     m.output_score += (row.human_lines || 0) + 0.7 * (row.ai_lines || 0);
     m.days_tracked += 1;
     if ((row.total_seconds || 0) >= CARD_ACTIVE_SECONDS) {
@@ -1425,10 +1425,10 @@ async function getCardMetricsForAllUsers(env: Env, scope: CardScope): Promise<Ma
  * cosmetic, not a real signal.
  */
 const POSITION_WEIGHTS: Record<Exclude<CardPosition, 'GK'>, Partial<Record<'pac' | 'sho' | 'pas' | 'dri' | 'def' | 'phy', number>>> = {
-  ST: { sho: 0.25, pac: 0.45, dri: 0.15, phy: 0.10, pas: 0.05 },
-  RW: { pac: 0.20, dri: 0.30, sho: 0.35, pas: 0.15 },
-  LW: { pac: 0.20, dri: 0.30, sho: 0.35, pas: 0.15 },
-  CAM: { pas: 0.40, dri: 0.30, sho: 0.10, pac: 0.20 },
+  ST: { sho: 0.45, pac: 0.25, dri: 0.15, phy: 0.10, pas: 0.05 },
+  RW: { pac: 0.35, dri: 0.30, sho: 0.20, pas: 0.15 },
+  LW: { pac: 0.35, dri: 0.30, sho: 0.20, pas: 0.15 },
+  CAM: { pas: 0.40, dri: 0.30, sho: 0.20, pac: 0.10 },
   CM: { pas: 0.30, phy: 0.25, dri: 0.20, def: 0.15, pac: 0.10 },
   CDM: { def: 0.40, phy: 0.30, pas: 0.20, dri: 0.10 },
   LM: { pac: 0.30, pas: 0.30, dri: 0.25, def: 0.15 },
@@ -1497,8 +1497,8 @@ export async function computeCardsForAllUsers(env: Env, scope: CardScope, today:
   const userIds = [...raw.keys()];
 
   const dimensions: Array<{ key: 'pac' | 'sho' | 'pas' | 'dri' | 'def' | 'phy'; extract: (m: RawUserCardMetrics) => number }> = [
-    { key: 'pac', extract: (m) => m.output_score },
-    { key: 'sho', extract: (m) => m.human_seconds },
+    { key: 'pac', extract: (m) => m.time_score },
+    { key: 'sho', extract: (m) => m.output_score },
     { key: 'pas', extract: (m) => m.distinct_projects + m.distinct_languages },
     { key: 'dri', extract: (m) => m.distinct_editors + m.distinct_os },
     { key: 'def', extract: (m) => (m.days_tracked > 0 ? m.days_active / m.days_tracked : 0) },
