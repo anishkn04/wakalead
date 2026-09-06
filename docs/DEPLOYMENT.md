@@ -16,7 +16,7 @@ npx wrangler login
 ```
 
 3. Make OAuth app at https://wakatime.com/apps
-   - redirect URI: `https://<your-project>.pages.dev`
+   - redirect URI: `https://wakalead-api.<sub>.workers.dev/api/auth/callback` (the **worker's** URL, not the Pages frontend - only the worker's `/api/auth/callback` route exchanges the code)
    - scopes: `email`, `read_stats`, `read_logged_time`
    - copy Client ID + Client Secret
 
@@ -121,10 +121,13 @@ VITE_API_BASE=http://localhost:8787/api
 ```
 WAKATIME_CLIENT_ID=...
 WAKATIME_CLIENT_SECRET=...
-WAKATIME_REDIRECT_URI=http://localhost:5173
+WAKATIME_REDIRECT_URI=http://localhost:8787/api/auth/callback
+FRONTEND_URL=http://localhost:5173
 SESSION_SECRET=...
 ADMIN_WAKATIME_ID=...
 ```
+
+`WAKATIME_REDIRECT_URI` must be the worker's own callback route (matches what's registered on the WakaTime OAuth app), not the frontend URL - that's what `FRONTEND_URL` is for (where the worker sends you *after* login completes).
 
 ## Check DB
 

@@ -111,3 +111,43 @@ CREATE TABLE IF NOT EXISTS user_ai_daily (
     PRIMARY KEY (user_id, date),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+-- Per-period leaderboard snapshots - each user's rank + value per metric per
+-- day (period='day') and trailing 7-day window (period='week'). Powers
+-- rank-1 consistency ("Nd/Nw at #1") and streak (fire/trophy) features.
+CREATE TABLE IF NOT EXISTS leaderboard_history (
+    user_id INTEGER NOT NULL,
+    period_start TEXT NOT NULL, -- Format: YYYY-MM-DD, anchor date for the period
+    period TEXT NOT NULL,       -- 'day' | 'week'
+    metric TEXT NOT NULL,       -- 'total' | 'human' | 'ai' | 'lines'
+    rank INTEGER NOT NULL,
+    value INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, period_start, period, metric),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_leaderboard_history_period_metric_rank
+    ON leaderboard_history(period, metric, rank);
+CREATE INDEX IF NOT EXISTS idx_leaderboard_history_period_metric_start
+    ON leaderboard_history(period, metric, period_start);
+
+-- User avatar image bytes, downloaded from WakaTime/Gravatar so the browser
+-- never hits WakaTime for photos. Served via GET /api/user/:id/photo.
+CREATE TABLE IF NOT EXISTS user_photos (
+    user_id INTEGER PRIMARY KEY,
+    data BLOB NOT NULL,
+    mime TEXT NOT NULL DEFAULT 'image/jpeg',
+    fetched_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- History of admin-triggered "season resets" (archive current stats, start
+-- fresh). season_number is the season being archived at reset time; the
+-- live tables always represent season (MAX(season_number) + 1), or season 1
+-- if this table is empty. See resetSeason() in worker/database.ts.
+CREATE TABLE IF NOT EXISTS season_resets (
+    season_number INTEGER PRIMARY KEY,
+    archived_at INTEGER NOT NULL,
+    reset_by INTEGER,
+    FOREIGN KEY (reset_by) REFERENCES users(id) ON DELETE SET NULL
+);

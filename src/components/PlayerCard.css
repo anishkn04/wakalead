@@ -1,0 +1,362 @@
+/* ==========================================================================
+   Football card skins — original designs
+   Structure lives in .pitch-card; each .card-* class is a pure skin.
+   ========================================================================== */
+
+.pitch-card {
+  /* ---- dimensions (change these) ---- */
+  --card-width: 300px;
+  --card-height: 420px;
+  /* all internal sizes are em-based, so they scale with --card-width */
+
+  /* ---- player image placement ---- */
+  --player-width: 76%;
+  --player-x: 58%;          /* horizontal anchor inside image area */
+  --player-y: 100%;         /* vertical anchor (100% = feet at baseline) */
+  --player-scale: 1;
+  --player-fit: contain;   /* cover = fill the area and crop */
+
+  /* ---- typography offsets ---- */
+  --meta-top: 9%;           /* rating / position block */
+  --meta-left: 9%;
+  --name-bottom: 32%;
+  --stats-bottom: 15%;
+  --player-gap: 3.5em;      /* space between the photo and the name line */
+
+  /* ---- skin defaults (overridden per card) ---- */
+  --frame-1: #dcdcdc;
+  --frame-2: #9a9a9a;
+  --frame-3: #5c5c5c;
+  --body-1: #f2f2f2;
+  --body-2: #c9c9c9;
+  --ink: #1c1c1c;
+  --ink-dim: rgba(28, 28, 28, .62);
+  --rule: rgba(28, 28, 28, .22);
+  --accent: #ffffff;
+  --pattern-alpha: .10;
+  --glow: rgba(255, 255, 255, .35);
+
+  /* plaque silhouette: notched top + bottom, flared corners.
+     The <svg><clipPath id="pitch-card-shape"> must exist once in the document. */
+  --silhouette: url(#pitch-card-shape);
+
+  position: relative;
+  width: var(--card-width);
+  height: var(--card-height);
+  font-size: calc(var(--card-width) / 18.75); /* proportional root: 16px at 300px */
+  flex: none;
+  clip-path: var(--silhouette);
+  background: linear-gradient(160deg, var(--frame-1) 0%, var(--frame-2) 38%,
+              var(--frame-3) 62%, var(--frame-2) 100%);
+  color: var(--ink);
+  font-family: "Archivo", "Helvetica Neue", Helvetica, sans-serif;
+  filter: drop-shadow(0 0.875em 1.625em rgba(0, 0, 0, .45));
+  isolation: isolate;
+}
+
+/* ---- inner body: second frame layer + card ground ---- */
+.pitch-card .card-body {
+  position: absolute;
+  inset: 0.3125em;
+  clip-path: var(--silhouette);
+  background:
+    radial-gradient(120% 70% at 50% 0%, var(--glow) 0%, transparent 58%),
+    linear-gradient(168deg, var(--body-1) 0%, var(--body-2) 100%);
+  overflow: hidden;
+}
+
+/* ---- geometric decoration ---- */
+.pitch-card .card-pattern {
+  position: absolute;
+  inset: 0;
+  opacity: var(--pattern-alpha);
+  background: repeating-linear-gradient(74deg,
+    var(--accent) 0 0.0625em,
+    transparent 0.0625em 0.1875em);
+  -webkit-mask-image: linear-gradient(116deg, transparent 14%, #000 30%, #000 56%, transparent 74%),
+    linear-gradient(0deg, transparent 34%, #000 46%);
+  mask-image: linear-gradient(116deg, transparent 14%, #000 30%, #000 56%, transparent 74%),
+    linear-gradient(0deg, transparent 34%, #000 46%);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
+
+/* ---- metallic sweep ---- */
+.pitch-card .card-shine {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(118deg, transparent 26%, rgba(255,255,255,.50) 33%, rgba(255,255,255,.06) 39%, transparent 46%),
+    linear-gradient(118deg, transparent 48%, rgba(255,255,255,.26) 55%, transparent 62%),
+    linear-gradient(62deg, transparent 40%, rgba(255,255,255,.18) 50%, transparent 58%),
+    radial-gradient(80% 46% at 22% 6%, rgba(255,255,255,.34) 0%, transparent 70%);
+  -webkit-mask-image: linear-gradient(0deg, transparent 33%, #000 44%);
+  mask-image: linear-gradient(0deg, transparent 33%, #000 44%);
+  mix-blend-mode: screen;
+}
+
+/* ---- hairline inner border ---- */
+.pitch-card .card-edge {
+  position: absolute;
+  inset: 0.6875em;
+  clip-path: var(--silhouette);
+  box-shadow: inset 0 0 0 0.0625em var(--rule);
+  pointer-events: none;
+}
+
+/* ---- player image area ---- */
+.pitch-card .card-player {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 12%; /* clears the silhouette's top edge (max 9.8% at centre) */
+  /* tied to the name band so the image can never overlap it */
+  bottom: calc(var(--name-bottom) + var(--player-gap));
+  overflow: hidden; /* the divider crops the figure, as on the reference */
+}
+.pitch-card .card-player img {
+  position: absolute;
+  left: var(--player-x);
+  top: var(--player-y);
+  width: var(--player-width);
+  height: 100%;
+  object-fit: var(--player-fit);       /* contain: any aspect fits, never overflows */
+  object-position: bottom center;
+  transform: translate(-50%, -100%) scale(var(--player-scale));
+  transform-origin: 50% 100%;
+  /* feathers the edges of a non-cut-out photo; harmless for a transparent PNG */
+
+}
+
+/* ---- rating / position ---- */
+.pitch-card .card-meta {
+  position: absolute;
+  top: var(--meta-top);
+  left: var(--meta-left);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.125em;
+  line-height: 1;
+}
+.pitch-card .rating {
+  font-family: "Barlow Condensed", "Archivo", sans-serif;
+  font-weight: 600;
+  font-size: 3.125em;
+  letter-spacing: calc(-1px * var(--u));
+}
+.pitch-card .position {
+  font-family: "Barlow Condensed", "Archivo", sans-serif;
+  font-weight: 600;
+  font-size: 1.1875em;
+  letter-spacing: 0.0938em;
+  padding-top: 0.25em;
+  border-top: 0.0625em solid var(--rule);
+  width: 100%;
+  text-align: center;
+  color: var(--ink-dim);
+}
+
+/* ---- name ---- */
+.pitch-card .card-name {
+  position: absolute;
+  bottom: var(--name-bottom);
+  left: 8%;
+  right: 8%;
+  z-index: 3;
+  text-align: center;
+  font-family: "Barlow Condensed", "Archivo", sans-serif;
+  font-weight: 600;
+  font-size: 1.5em;
+  letter-spacing: 0.066em;
+  text-transform: uppercase;
+  padding-top: 0.375em;
+  border-top: 0.0625em solid var(--rule);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- stats ---- */
+.pitch-card .card-stats {
+  position: absolute;
+  bottom: var(--stats-bottom);
+  left: 11%;
+  right: 11%;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  font-family: "Barlow Condensed", "Archivo", sans-serif;
+}
+.pitch-card .stat {
+  display: flex;
+  flex-direction: column-reverse; /* markup is value-then-label; label reads on top */
+  align-items: center;
+  gap: 0.15em;
+  line-height: 1;
+}
+.pitch-card .stat-value {
+  font-weight: 600;
+  font-size: 1.375em;
+}
+.pitch-card .stat-label {
+  font-weight: 500;
+  font-size: 0.8125em;
+  letter-spacing: 0.0625em;
+  color: var(--ink-dim);
+}
+
+/* ==========================================================================
+   SKINS
+   ========================================================================== */
+
+/* Base Gold — common gold rarity */
+.card-gold {
+  --frame-1: #fbeeb6;
+  --frame-2: #c99f3c;
+  --frame-3: #7a5613;
+  --body-1: #fdf4cf;
+  --body-2: #d3aa52;
+  --ink: #3b2a05;
+  --ink-dim: rgba(59, 42, 5, .66);
+  --rule: rgba(59, 42, 5, .28);
+  --accent: #fffae0;
+  --pattern-alpha: .14;
+  --glow: rgba(255, 250, 216, .55);
+}
+
+/* Base Silver — common silver rarity */
+.card-silver {
+  --frame-1: #f6f8fa;
+  --frame-2: #b3bbc4;
+  --frame-3: #6c757e;
+  --body-1: #f0f3f6;
+  --body-2: #bcc4cd;
+  --ink: #232a31;
+  --ink-dim: rgba(35, 42, 49, .64);
+  --rule: rgba(35, 42, 49, .24);
+  --accent: #ffffff;
+  --pattern-alpha: .12;
+  --glow: rgba(255, 255, 255, .6);
+}
+
+/* Icon / Legend — black + gold, top-tier */
+.card-black {
+  --frame-1: #e9cd80;
+  --frame-2: #9d7a26;
+  --frame-3: #2c2519;
+  --body-1: #1d1a14;
+  --body-2: #0a0908;
+  --ink: #f3e4b4;
+  --ink-dim: rgba(243, 228, 180, .6);
+  --rule: rgba(233, 205, 128, .3);
+  --accent: #e9cd80;
+  --pattern-alpha: .16;
+  --glow: rgba(233, 205, 128, .22);
+}
+
+/* Hero — purple special */
+.card-purple {
+  --frame-1: #dcbcff;
+  --frame-2: #7b46c2;
+  --frame-3: #2b1245;
+  --body-1: #3a1e66;
+  --body-2: #150a26;
+  --ink: #f4ecff;
+  --ink-dim: rgba(244, 236, 255, .62);
+  --rule: rgba(220, 188, 255, .32);
+  --accent: #dcbcff;
+  --pattern-alpha: .18;
+  --glow: rgba(200, 160, 255, .3);
+}
+
+/* Premium White — white + black special */
+.card-white {
+  --frame-1: #ffffff;
+  --frame-2: #2a2a2a;
+  --frame-3: #0c0c0c;
+  --body-1: #ffffff;
+  --body-2: #dcdcdc;
+  --ink: #101010;
+  --ink-dim: rgba(16, 16, 16, .58);
+  --rule: rgba(16, 16, 16, .28);
+  --accent: #0c0c0c;
+  --pattern-alpha: .09;
+  --glow: rgba(255, 255, 255, .8);
+}
+
+/* Featured Red — red special */
+.card-red {
+  --frame-1: #ffb3b8;
+  --frame-2: #b02a34;
+  --frame-3: #340509;
+  --body-1: #7e1420;
+  --body-2: #2b0509;
+  --ink: #ffeaec;
+  --ink-dim: rgba(255, 234, 236, .62);
+  --rule: rgba(255, 179, 184, .32);
+  --accent: #ffb3b8;
+  --pattern-alpha: .17;
+  --glow: rgba(255, 140, 150, .28);
+}
+
+/* ---- White Icon: extra detailing ---- */
+.card-white {
+  --frame-1: #ffffff;
+  --frame-2: #1e1e1e;
+  --frame-3: #000000;
+  --body-1: #ffffff;
+  --body-2: #d8dade;
+  --ink: #0b0b0b;
+  --ink-dim: rgba(11, 11, 11, .55);
+  --rule: rgba(11, 11, 11, .3);
+  --accent: #0c0c0c;
+  --pattern-alpha: .13;
+  --glow: rgba(255, 255, 255, .9);
+}
+/* engraved diagonal ribbon under the striations */
+.card-white .card-body::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(74deg,
+      rgba(11, 11, 11, .5) 0 0.03125em,
+      transparent 0.03125em 0.125em),
+    linear-gradient(118deg, transparent 30%, rgba(11, 11, 11, .10) 40%, transparent 50%);
+  -webkit-mask-image: linear-gradient(116deg, transparent 16%, #000 32%, #000 54%, transparent 70%),
+    linear-gradient(0deg, transparent 36%, #000 48%);
+  mask-image: linear-gradient(116deg, transparent 16%, #000 32%, #000 54%, transparent 70%),
+    linear-gradient(0deg, transparent 36%, #000 48%);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+  opacity: .5;
+}
+/* pearl sheen + graphite base */
+.card-white .card-body::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(70% 40% at 24% 4%, rgba(255, 255, 255, .95) 0%, transparent 68%),
+    linear-gradient(0deg, rgba(11, 11, 11, .14) 0%, transparent 22%);
+  pointer-events: none;
+}
+/* double hairline border */
+.card-white .card-edge {
+  box-shadow:
+    inset 0 0 0 0.0625em rgba(11, 11, 11, .85),
+    inset 0 0 0 0.1875em rgba(255, 255, 255, .9),
+    inset 0 0 0 0.25em rgba(11, 11, 11, .35);
+}
+/* letterpress numerals */
+.card-white .rating,
+.card-white .card-name,
+.card-white .stat-value {
+  text-shadow: 0 0.0375em 0 rgba(255, 255, 255, .85);
+}
+.card-white .position {
+  border-top-color: rgba(11, 11, 11, .5);
+}

@@ -63,6 +63,55 @@ export interface WeeklyData {
   }[];
 }
 
+export interface SeasonResetRecord {
+  season_number: number;
+  archived_at: number;
+  reset_by: number | null;
+}
+
+export interface SeasonInfo {
+  currentSeason: number;
+  history: SeasonResetRecord[];
+}
+
+export type CardScope = 'season' | 'career';
+export type CardType = 'icon' | 'legend_hero' | 'white_icon' | 'featured_red' | 'base_gold' | 'base_silver';
+export type CardPosition = 'ST' | 'RW' | 'LW' | 'CAM' | 'CM' | 'CDM' | 'LM' | 'RM' | 'CB' | 'RB' | 'LB' | 'GK';
+
+export interface UserCard {
+  scope: CardScope;
+  pac: number;
+  sho: number;
+  pas: number;
+  dri: number;
+  def: number;
+  phy: number;
+  overall: number;
+  position: CardPosition;
+  cardType: CardType;
+  provisional: boolean;
+  days_active: number;
+}
+
+export interface UserCardWithProfile extends UserCard {
+  user_id: number;
+  username: string;
+  display_name: string | null;
+  photo_url: string | null;
+}
+
+export interface UserSeasonStat {
+  season_number: number;
+  ended_at: number | null;
+  total_seconds: number;
+  ai_seconds: number;
+  human_seconds: number;
+  ai_lines: number;
+  human_lines: number;
+  days_active: number;
+  best_day: { date: string; seconds: number } | null;
+}
+
 /** One aggregated breakdown entry (name + total seconds + share %) */
 export interface TooltipStatBreakdown {
   name: string;
@@ -268,6 +317,21 @@ class ApiClient {
     return this.request<CompareStats>(`/user/${userId}/compare`);
   }
 
+  /** FUT-style player card, percentile-ranked against every other user. */
+  async getUserCard(userId: number, scope: CardScope = 'season'): Promise<UserCard> {
+    return this.request<UserCard>(`/user/${userId}/card?scope=${scope}`);
+  }
+
+  /** Everyone's card at once, sorted best overall first. */
+  async getAllCards(scope: CardScope = 'season'): Promise<{ scope: CardScope; cards: UserCardWithProfile[] }> {
+    return this.request(`/cards?scope=${scope}`);
+  }
+
+  /** That user's aggregated stats for each past (archived) season. */
+  async getUserSeasons(userId: number): Promise<{ seasons: UserSeasonStat[] }> {
+    return this.request<{ seasons: UserSeasonStat[] }>(`/user/${userId}/seasons`);
+  }
+
   async getProfile(username: string): Promise<ProfileData> {
     return this.request<ProfileData>(`/profile/${encodeURIComponent(username)}`);
   }
@@ -291,6 +355,20 @@ class ApiClient {
 
   async triggerFetch(today = true): Promise<void> {
     await this.request(`/admin/fetch-now?today=${today}`, { method: 'POST' });
+  }
+
+  /** Backfill/repair a specific past date (e.g. one the cron missed). */
+  async backfillDate(date: string): Promise<void> {
+    await this.request(`/admin/fetch-now?date=${date}`, { method: 'POST' });
+  }
+
+  async getSeasonInfo(): Promise<SeasonInfo> {
+    return this.request<SeasonInfo>('/admin/season');
+  }
+
+  /** Archives current stats and starts a fresh season. Accounts/photos/real WakaTime lifetime totals are untouched. */
+  async resetSeason(): Promise<{ success: boolean; archivedSeason: number }> {
+    return this.request<{ success: boolean; archivedSeason: number }>('/admin/reset-season', { method: 'POST' });
   }
 
   async refreshAll(): Promise<void> {

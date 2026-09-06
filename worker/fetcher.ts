@@ -21,6 +21,7 @@ import {
   upsertUserPhoto,
   computeAndStoreDailyLeaderboard,
   computeAndStoreWeeklyLeaderboard,
+  getCurrentSeasonStartDate,
 } from './database';
 
 // Helper to get date in Nepal timezone (UTC+5:45)
@@ -35,6 +36,16 @@ function formatDate(date: Date): string {
   const month = String(date.getUTCMonth() + 1).padStart(2, '0');
   const day = String(date.getUTCDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+/**
+ * Keeps a season reset "stuck": every sync path must check this before
+ * touching daily_stats/leaderboard_history for a date, or a normal
+ * multi-day sync (refresh-all, cron, backfill) would silently re-pull real
+ * WakaTime history from before the reset and undo it.
+ */
+function isDateInCurrentSeason(date: string, seasonStart: string | null): boolean {
+  return !seasonStart || date >= seasonStart;
 }
 
 const ALL_TIME_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -129,21 +140,39 @@ async function ensureAllTimeStats(env: Env, userId: number, username: string, ac
 /**
  * Data fetcher - runs on a scheduled cron job
  * Fetches yesterday's data for all users to stay within rate limits
- * 
+ *
  * Strategy:
  * - Runs once per day at 2 AM UTC
  * - Fetches previous day's data (which is now complete)
  * - Stores in daily_stats table
  * - Logs all fetch attempts for debugging and rate limit tracking
+ *
+ * `explicitDate` (YYYY-MM-DD) overrides `useToday` entirely - used by the
+ * admin backfill endpoint to repair a specific past date (e.g. one the cron
+ * missed) instead of only ever being able to target today/yesterday. Safe to
+ * re-run on a date that's already synced: per-user fetches are skipped via
+ * `wasFetchedToday`, but the leaderboard recompute at the end always runs,
+ * which is exactly what a `leaderboard_history` repair needs.
  */
-export async function fetchDataForAllUsers(env: Env, useToday = false): Promise<void> {
+export async function fetchDataForAllUsers(env: Env, useToday = false, explicitDate?: string): Promise<void> {
   console.log('Starting scheduled data fetch...');
 
-  const targetDate = getNepalDate();
-  if (!useToday) {
-    targetDate.setUTCDate(targetDate.getUTCDate() - 1);
+  let dateStr: string;
+  if (explicitDate) {
+    dateStr = explicitDate;
+  } else {
+    const targetDate = getNepalDate();
+    if (!useToday) {
+      targetDate.setUTCDate(targetDate.getUTCDate() - 1);
+    }
+    dateStr = formatDate(targetDate);
   }
-  const dateStr = formatDate(targetDate);
+
+  const seasonStart = await getCurrentSeasonStartDate(env);
+  if (!isDateInCurrentSeason(dateStr, seasonStart)) {
+    console.log(`Skipping fetch for ${dateStr} - before current season start (${seasonStart})`);
+    return;
+  }
 
   // Get all users
   const users = await getAllUsers(env);
@@ -250,6 +279,11 @@ export async function fetchTodayDataForUser(
     return; // Already have today's data
   }
 
+  const seasonStart = await getCurrentSeasonStartDate(env);
+  if (!isDateInCurrentSeason(today, seasonStart)) {
+    return; // Shouldn't happen in practice (today is never before a past reset), but stay consistent
+  }
+
   try {
     const summaries = await fetchWakaTimeSummaries(accessToken, today, today);
     const daySummary = (summaries.data || [])[0];
@@ -267,6 +301,18 @@ export async function fetchTodayDataForUser(
     } catch (error: any) {
       console.error('Error updating user stats:', error);
     }
+
+    // Refresh today's rank-one/streak data now that this user's numbers
+    // changed - ranks are global, so this recomputes for everyone, not just
+    // the logging-in user. Without this, streaks only ever update when an
+    // admin force-syncs or the daily cron runs (which only closes out
+    // *yesterday*), so a normal login would otherwise never move "today".
+    try {
+      await computeAndStoreDailyLeaderboard(env, today);
+      await computeAndStoreWeeklyLeaderboard(env, today);
+    } catch (error: any) {
+      console.error('Error computing leaderboards after login sync:', error);
+    }
   } catch (error: any) {
     console.error('Error fetching today data:', error);
     await logFetch(env, userId, 'daily', today, 'error', error.message);
@@ -283,8 +329,14 @@ export async function fetchTodayDataForUser(
  */
 export async function fetchTodayDataForAllUsers(env: Env, forceRefresh = false): Promise<void> {
   const today = formatDate(getNepalDate());
+
+  const seasonStart = await getCurrentSeasonStartDate(env);
+  if (!isDateInCurrentSeason(today, seasonStart)) {
+    return;
+  }
+
   const users = await getAllUsers(env);
-  
+
   console.log(`Fetching today's data for ${users.length} users (forceRefresh: ${forceRefresh})`);
 
   // Filter out users that have already been fetched (unless forceRefresh)
@@ -376,28 +428,34 @@ export async function fetchWeekDataForUser(
   userId: number,
   accessToken: string
 ): Promise<void> {
-  // Generate last 7 days dates
+  const seasonStart = await getCurrentSeasonStartDate(env);
+
+  // Generate last 7 days dates, clamped to the current season - otherwise
+  // this would happily re-pull real WakaTime history from before a reset.
   const dates: string[] = [];
   for (let i = 6; i >= 0; i--) {
     const nepalNow = getNepalDate();
     nepalNow.setUTCDate(nepalNow.getUTCDate() - i);
-    dates.push(formatDate(nepalNow));
+    const d = formatDate(nepalNow);
+    if (isDateInCurrentSeason(d, seasonStart)) dates.push(d);
   }
+  if (dates.length === 0) return; // entire trailing week is before the season start
 
   try {
-    // Fetch entire week in one API call (more efficient)
+    // Fetch entire (clamped) window in one API call (more efficient)
     const startDate = dates[0];
     const endDate = dates[dates.length - 1];
-    
+
     console.log(`Fetching week data for user ${userId} from ${startDate} to ${endDate}`);
     const summaries = await fetchWakaTimeSummaries(accessToken, startDate, endDate);
-    
+
     // Store each day's data
     if (summaries.data && Array.isArray(summaries.data)) {
       for (const daySummary of summaries.data) {
         const date = daySummary.range.date;
+        if (!isDateInCurrentSeason(date, seasonStart)) continue;
         const stats = parseDailySummary(daySummary);
-        
+
         // Store in database (will update if already exists)
         await storeDailyStats(env, userId, date, stats);
         await upsertDayBreakdowns(env, userId, date, collectDayBreakdowns(daySummary));
@@ -426,17 +484,21 @@ export async function fetchWeekDataForUser(
  */
 export async function fetchWeekDataForAllUsers(env: Env): Promise<void> {
   const users = await getAllUsers(env);
-  
-  // Generate last 7 days dates
+  const seasonStart = await getCurrentSeasonStartDate(env);
+
+  // Generate last 7 days dates, clamped to the current season - otherwise
+  // this would happily re-pull real WakaTime history from before a reset.
   const dates: string[] = [];
   for (let i = 6; i >= 0; i--) {
     const nepalNow = getNepalDate();
     nepalNow.setUTCDate(nepalNow.getUTCDate() - i);
-    dates.push(formatDate(nepalNow));
+    const d = formatDate(nepalNow);
+    if (isDateInCurrentSeason(d, seasonStart)) dates.push(d);
   }
+  if (dates.length === 0) return; // entire trailing week is before the season start
   const startDate = dates[0];
   const endDate = dates[dates.length - 1];
-  
+
   console.log(`Fetching week data for ${users.length} users from ${startDate} to ${endDate}`);
 
   // Process users in parallel batches (5 at a time to avoid rate limits)
@@ -479,6 +541,7 @@ export async function fetchWeekDataForAllUsers(env: Env): Promise<void> {
         if (summaries.data && Array.isArray(summaries.data)) {
           await Promise.all(summaries.data.map(async (daySummary: any) => {
             const date = daySummary.range.date;
+            if (!isDateInCurrentSeason(date, seasonStart)) return;
             const stats = parseDailySummary(daySummary);
             await storeDailyStats(env, user.id, date, stats);
             await upsertDayBreakdowns(env, user.id, date, collectDayBreakdowns(daySummary));

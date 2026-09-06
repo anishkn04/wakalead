@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Football card skins</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=Barlow+Condensed:wght@500;600&display=swap" />
+<link rel="stylesheet" href="style.css" />
+<style>
+  body { margin: 0; background: #0e0f11; color: #e8e6e1; font-family: Archivo, Helvetica, sans-serif; }
+  .page { padding: 56px 40px 72px; }
+  .head { max-width: 1180px; margin: 0 auto 44px; }
+  .head h1 { margin: 0 0 10px; font-family: "Barlow Condensed", sans-serif; font-weight: 600; font-size: 40px; }
+  .head p { margin: 0; max-width: 620px; font-size: 14px; line-height: 1.6; color: #a2a5aa; }
+  .grid { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 52px 40px; justify-items: center; }
+  .cell { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+  .label { display: flex; flex-direction: column; align-items: center; gap: 5px; text-align: center; }
+  .label strong { font-family: "Barlow Condensed", sans-serif; font-weight: 600; font-size: 18px; letter-spacing: 1px; text-transform: uppercase; }
+  .label span { font-size: 12px; color: #7f8288; }
+  .cell code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: #8b8d92; }
+  a { color: #cbb789; }
+  a:hover { color: #efe1bd; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="head">
+    <h1>Six reusable football card designs</h1>
+    <p>Structure is one shared class (.pitch-card); appearance is one skin class per card.</p>
+  </div>
+  <div class="grid">
+    <div class="cell">
+      <div class="pitch-card card-gold">
+        <div class="card-body">
+          <div class="card-pattern"></div>
+          <div class="card-shine"></div>
+        </div>
+        <div class="card-edge"></div>
+        <div class="card-player"><img src="assets/player-avatar.png" alt="" /></div>
+        <div class="card-meta">
+          <div class="rating">92</div>
+          <div class="position">ST</div>
+        </div>
+        <div class="card-name">Player Name</div>
+        <div class="card-stats">
+          <div class="stat"><span class="stat-value">98</span><span class="stat-label">PAC</span></div>
+          <div class="stat"><span class="stat-value">91</span><span class="stat-label">SHO</span></div>
+          <div class="stat"><span class="stat-value">80</span><span class="stat-label">PAS</span></div>
+          <div class="stat"><span class="stat-value">93</span><span class="stat-label">DRI</span></div>
+          <div class="stat"><span class="stat-value">36</span><span class="stat-label">DEF</span></div>
+          <div class="stat"><span class="stat-value">78</span><span class="stat-label">PHY</span></div>
+        </div>
+      </div>
+      <div class="label"><strong>Base Gold</strong><span>common gold rarity</span><code>.card-gold</code></div>
+    </div>
+    <div class="cell">
+      <div class="pitch-card card-silver">
+        <div class="card-body">
+          <div class="card-pattern"></div>
+          <div class="card-shine"></div>
+        </div>
+        <div class="card-edge"></div>
+        <div class="card-player"><img src="assets/player-avatar.png" alt="" /></div>
+        <div class="card-meta">
+          <div class="rating">92</div>
+          <div class="position">ST</div>
+        </div>
+        <div class="card-name">Player Name</div>
+        <div class="card-stats">
+          <div class="stat"><span class="stat-value">98</span><span class="stat-label">PAC</span></div>
+          <div class="stat"><span class="stat-value">91</span><span class="stat-label">SHO</span></div>
+          <div class="stat"><span class="stat-value">80</span><span class="stat-label">PAS</span></div>
+          <div class="stat"><span class="stat-value">93</span><span class="stat-label">DRI</span></div>
+          <div class="stat"><span class="stat-value">36</span><span class="stat-label">DEF</span></div>
+          <div class="stat"><span class="stat-value">78</span><span class="stat-label">PHY</span></div>
+        </div>
+      </div>
+      <div class="label"><strong>Base Silver</strong><span>common silver rarity</span><code>.card-silver</code></div>
+    </div>
+    <div class="cell">
+      <div class="pitch-card card-black">
+        <div class="card-body">
+          <div class="card-pattern"></div>
+          <div class="card-shine"></div>
+        </div>
+        <div class="card-edge"></div>
+        <div class="card-player"><img src="assets/player-avatar.png" alt="" /></div>
+        <div class="card-meta">
+          <div class="rating">92</div>
+          <div class="position">ST</div>
+        </div>
+        <div class="card-name">Player Name</div>
+        <div class="card-stats">
+          <div class="stat"><span class="stat-value">98</span><span class="stat-label">PAC</span></div>
+          <div class="stat"><span class="stat-value">91</span><span class="stat-label">SHO</span></div>
+          <div class="stat"><span class="stat-value">80</span><span class="stat-label">PAS</span></div>
+          <div class="stat"><span class="stat-value">93</span><span class="stat-label">DRI</span></div>
+          <div class="stat"><span class="stat-value">36</span><span class="stat-label">DEF</span></div>
+          <div class="stat"><span class="stat-value">78</span><span class="stat-label">PHY</span></div>
+        </div>
+      </div>
+      <div class="label"><strong>Icon / Legend</strong><span>black + gold, top-tier</span><code>.card-black</code></div>
+    </div>
+    <div class="cell">
+      <div class="pitch-card card-purple">
+        <div class="card-body">
+          <div class="card-pattern"></div>
+          <div class="card-shine"></div>
+        </div>
+        <div class="card-edge"></div>
+        <div class="card-player"><img src="assets/player-avatar.png" alt="" /></div>
+        <div class="card-meta">
+          <div class="rating">92</div>
+          <div class="position">ST</div>
+        </div>
+        <div class="card-name">Player Name</div>
+        <div class="card-stats">
+          <div class="stat"><span class="stat-value">98</span><span class="stat-label">PAC</span></div>
+          <div class="stat"><span class="stat-value">91</span><span class="stat-label">SHO</span></div>
+          <div class="stat"><span class="stat-value">80</span><span class="stat-label">PAS</span></div>
+          <div class="stat"><span class="stat-value">93</span><span class="stat-label">DRI</span></div>
+          <div class="stat"><span class="stat-value">36</span><span class="stat-label">DEF</span></div>
+          <div class="stat"><span class="stat-value">78</span><span class="stat-label">PHY</span></div>
+        </div>
+      </div>
+      <div class="label"><strong>Hero</strong><span>purple special</span><code>.card-purple</code></div>
+    </div>
+    <div class="cell">
+      <div class="pitch-card card-white">
+        <div class="card-body">
+          <div class="card-pattern"></div>
+          <div class="card-shine"></div>
+        </div>
+        <div class="card-edge"></div>
+        <div class="card-player"><img src="assets/player-avatar.png" alt="" /></div>
+        <div class="card-meta">
+          <div class="rating">92</div>
+          <div class="position">ST</div>
+        </div>
+        <div class="card-name">Player Name</div>
+        <div class="card-stats">
+          <div class="stat"><span class="stat-value">98</span><span class="stat-label">PAC</span></div>
+          <div class="stat"><span class="stat-value">91</span><span class="stat-label">SHO</span></div>
+          <div class="stat"><span class="stat-value">80</span><span class="stat-label">PAS</span></div>
+          <div class="stat"><span class="stat-value">93</span><span class="stat-label">DRI</span></div>
+          <div class="stat"><span class="stat-value">36</span><span class="stat-label">DEF</span></div>
+          <div class="stat"><span class="stat-value">78</span><span class="stat-label">PHY</span></div>
+        </div>
+      </div>
+      <div class="label"><strong>White Icon</strong><span>engraved white, icon tier</span><code>.card-white</code></div>
+    </div>
+    <div class="cell">
+      <div class="pitch-card card-red">
+        <div class="card-body">
+          <div class="card-pattern"></div>
+          <div class="card-shine"></div>
+        </div>
+        <div class="card-edge"></div>
+        <div class="card-player"><img src="assets/player-avatar.png" alt="" /></div>
+        <div class="card-meta">
+          <div class="rating">92</div>
+          <div class="position">ST</div>
+        </div>
+        <div class="card-name">Player Name</div>
+        <div class="card-stats">
+          <div class="stat"><span class="stat-value">98</span><span class="stat-label">PAC</span></div>
+          <div class="stat"><span class="stat-value">91</span><span class="stat-label">SHO</span></div>
+          <div class="stat"><span class="stat-value">80</span><span class="stat-label">PAS</span></div>
+          <div class="stat"><span class="stat-value">93</span><span class="stat-label">DRI</span></div>
+          <div class="stat"><span class="stat-value">36</span><span class="stat-label">DEF</span></div>
+          <div class="stat"><span class="stat-value">78</span><span class="stat-label">PHY</span></div>
+        </div>
+      </div>
+      <div class="label"><strong>Featured Red</strong><span>red special</span><code>.card-red</code></div>
+    </div>
+  </div>
+</div>
+<script src="card-shape.js"></script>
+</body>
+</html>

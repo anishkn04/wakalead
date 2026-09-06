@@ -1,6 +1,6 @@
 import { Env } from './types';
 import { exchangeCodeForToken, fetchWakaTimeUser, fetchPhotoData } from './wakatime';
-import { createOrUpdateUser, getLeaderboard, getWeeklyData, getAllUsers, deleteUser, banUser, unbanUser, getUserById, getLastSyncTime, getUserTooltipStats, getCompareStats, upsertUserPhoto } from './database';
+import { createOrUpdateUser, getLeaderboard, getWeeklyData, getAllUsers, deleteUser, banUser, unbanUser, getUserById, getLastSyncTime, getUserTooltipStats, getCompareStats, upsertUserPhoto, getCurrentSeason, getSeasonHistory, resetSeason, getUserSeasonHistory, getUserCard, getAllUserCards, CardScope } from './database';
 import { createSession, verifySession, deleteSession, extractSessionId } from './session';
 import { fetchDataForAllUsers, fetchTodayDataForUser, fetchWeekDataForUser, fetchTodayDataForAllUsers, fetchWeekDataForAllUsers, fetchPhotosForAllUsers } from './fetcher';
 import { getProfileData } from './profile';
@@ -285,6 +285,19 @@ export default {
         }, 200, 0); // No browser caching - always fetch fresh data
       }
 
+      // Everyone's FUT-style card at once - public, for the leaderboard's
+      // card gallery. scope=season (default) or scope=career.
+      if (path === '/api/cards') {
+        const scopeParam = url.searchParams.get('scope');
+        const scope: CardScope = scopeParam === 'career' ? 'career' : 'season';
+        const today = formatDate(getNepalDate());
+        const cards = await getAllUserCards(env, scope, today);
+        return jsonResponse({
+          scope,
+          cards: cards.map((c) => ({ ...c, photo_url: photoUrlFor(request, c.user_id, c.photo_url) })),
+        }, 200, 0);
+      }
+
       // Hover-card stats for a single user - public, served from D1 only
       if (path.match(/^\/api\/user\/\d+\/stats$/)) {
         const userId = parseInt(path.split('/')[3]);
@@ -294,6 +307,27 @@ export default {
           return errorResponse('User not found', 404);
         }
         return jsonResponse({ ...stats, photo_url: photoUrlFor(request, stats.user_id, stats.photo_url) }, 200, 0);
+      }
+
+      // Past-season archive stats for a single user - public, DB only
+      if (path.match(/^\/api\/user\/\d+\/seasons$/)) {
+        const userId = parseInt(path.split('/')[3]);
+        const seasons = await getUserSeasonHistory(env, userId);
+        return jsonResponse({ seasons }, 200, 0);
+      }
+
+      // FUT-style player card for a single user - public, DB only.
+      // scope=season (default) or scope=career.
+      if (path.match(/^\/api\/user\/\d+\/card$/)) {
+        const userId = parseInt(path.split('/')[3]);
+        const scopeParam = url.searchParams.get('scope');
+        const scope: CardScope = scopeParam === 'career' ? 'career' : 'season';
+        const today = formatDate(getNepalDate());
+        const card = await getUserCard(env, userId, scope, today);
+        if (!card) {
+          return errorResponse('No card data for this user yet', 404);
+        }
+        return jsonResponse({ scope, ...card }, 200, 0);
       }
 
       // Compare stats for a single user - DB only, daily/weekly/all-time buckets
@@ -477,10 +511,31 @@ export default {
         }
 
         if (path === '/api/admin/fetch-now') {
-          // Trigger manual data fetch for today
+          // Trigger manual data fetch for today/yesterday, or an explicit
+          // past date (e.g. to repair a day the cron missed).
+          const dateParam = url.searchParams.get('date');
+          if (dateParam && !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+            return errorResponse('Invalid date, expected YYYY-MM-DD', 400);
+          }
           const useToday = url.searchParams.get('today') === 'true';
-          await fetchDataForAllUsers(env, useToday);
-          return jsonResponse({ success: true, message: `Data fetch initiated for ${useToday ? 'today' : 'yesterday'}` });
+          await fetchDataForAllUsers(env, useToday, dateParam || undefined);
+          return jsonResponse({ success: true, message: `Data fetch initiated for ${dateParam || (useToday ? 'today' : 'yesterday')}` });
+        }
+
+        if (path === '/api/admin/season' && request.method === 'GET') {
+          const [currentSeason, history] = await Promise.all([
+            getCurrentSeason(env),
+            getSeasonHistory(env),
+          ]);
+          return jsonResponse({ currentSeason, history });
+        }
+
+        if (path === '/api/admin/reset-season' && request.method === 'POST') {
+          // Archives daily_stats/fetch_log/breakdowns/leaderboard_history
+          // under a "_season_N" suffix and starts fresh. Users, photos, and
+          // each user's real WakaTime lifetime total are left untouched.
+          const result = await resetSeason(env, user.id);
+          return jsonResponse({ success: true, ...result });
         }
       }
 
