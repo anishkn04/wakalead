@@ -453,11 +453,16 @@ export function Profile() {
 
               {!cardLoading && !cardError && card && (
                 <div className="flex flex-col items-center gap-3">
-                  <PlayerCard card={card} name={name} photoUrl={data.user.photo_url} />
+                  <PlayerCard card={card} name={name} photoUrl={data.user.photo_url} downloadable />
                   <div className="text-center">
                     <p className="text-sm font-medium text-slate-700 dark:text-zinc-300">
                       {CARD_TYPE_LABEL[card.cardType]} · {card.position}
                     </p>
+                    {card.nextTier && (
+                      <p className="text-xs text-slate-400 dark:text-zinc-600 mt-0.5">
+                        {card.nextTier.pointsAway} pt{card.nextTier.pointsAway === 1 ? '' : 's'} from {card.nextTier.label}
+                      </p>
+                    )}
                     {card.provisional && (
                       <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
                         Provisional - not enough {cardScope} data yet for a fully meaningful rating
@@ -472,12 +477,12 @@ export function Profile() {
                 <p>
                   Every number is <strong>relative to everyone else</strong>, not an absolute
                   bar - each of the 6 stats is your percentile rank against the whole group,
-                  rescaled so even last place still looks respectable. PAC and SHO are based
-                  on your own typed lines and hands-on-keyboard time (AI-assisted lines count
-                  for less), so leaving a tool running idle doesn't inflate your card.
+                  rescaled so even last place still looks respectable. PAC and SHO count both
+                  your own time/lines and AI-assisted time/lines (AI counted at a discount) -
+                  this app doesn't hide or penalize AI usage, it's part of how you work.
                 </p>
                 <p>
-                  <strong>PAC</strong> lines written · <strong>SHO</strong> active coding time ·{' '}
+                  <strong>PAC</strong> active coding time · <strong>SHO</strong> lines written ·{' '}
                   <strong>PAS</strong> breadth of projects/languages · <strong>DRI</strong> tool
                   versatility · <strong>DEF</strong> consistency (active days ratio) ·{' '}
                   <strong>PHY</strong> longest streak.

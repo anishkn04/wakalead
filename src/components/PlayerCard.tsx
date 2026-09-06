@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { UserCard, CardType } from '../api';
 import './PlayerCard.css';
 
@@ -18,6 +18,18 @@ export const CARD_TYPE_LABEL: Record<CardType, string> = {
   featured_red: 'Featured',
   base_gold: 'Gold',
   base_silver: 'Silver',
+};
+
+const TREND_GLYPH: Record<UserCard['trend'], string> = {
+  up: '▲',
+  down: '▼',
+  flat: '',
+};
+
+const TREND_COLOR: Record<UserCard['trend'], string> = {
+  up: '#16a34a',
+  down: '#dc2626',
+  flat: 'transparent',
 };
 
 /**
@@ -50,41 +62,92 @@ interface PlayerCardProps {
   name: string;
   photoUrl: string | null;
   width?: number;
+  /** Shows a "Download card" button below the card that exports it as a PNG. */
+  downloadable?: boolean;
 }
 
-export function PlayerCard({ card, name, photoUrl, width = 300 }: PlayerCardProps) {
+export function PlayerCard({ card, name, photoUrl, width = 300, downloadable = false }: PlayerCardProps) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [downloading, setDownloading] = useState(false);
+
   useEffect(() => {
     ensureCardShapeDef();
   }, []);
 
   const skinClass = SKIN_CLASS[card.cardType];
+  const showHotStreakBadge = card.hotStreak !== null && card.cardType !== 'featured_red';
+
+  const handleDownload = async () => {
+    if (!cardRef.current) return;
+    setDownloading(true);
+    try {
+      const { toPng } = await import('html-to-image');
+      const dataUrl = await toPng(cardRef.current, { pixelRatio: 3 });
+      const link = document.createElement('a');
+      link.download = `${name.replace(/\s+/g, '_')}_card.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (error) {
+      console.error('Error exporting card image:', error);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
-    <div
-      className={`pitch-card ${skinClass} ${card.provisional ? 'opacity-60 grayscale-[0.4]' : ''}`}
-      style={{ '--card-width': `${width}px`, '--card-height': `${Math.round(width * 1.4)}px` } as React.CSSProperties}
-    >
-      <div className="card-body">
-        <div className="card-pattern" />
-        <div className="card-shine" />
+    <div className="flex flex-col items-center gap-3">
+      <div
+        ref={cardRef}
+        className={`pitch-card ${skinClass} ${card.provisional ? 'opacity-60 grayscale-[0.4]' : ''}`}
+        style={{ '--card-width': `${width}px`, '--card-height': `${Math.round(width * 1.4)}px` } as React.CSSProperties}
+      >
+        <div className="card-body">
+          <div className="card-pattern" />
+          <div className="card-shine" />
+        </div>
+        <div className="card-edge" />
+
+        {showHotStreakBadge && (
+          <div
+            className="absolute top-[9%] right-[9%] z-10 flex items-center gap-0.5 rounded-full bg-orange-500/90 px-1.5 py-0.5 text-[10px] font-bold text-white shadow"
+            title={`${card.hotStreak} period streak`}
+          >
+            🔥 {card.hotStreak}
+          </div>
+        )}
+
+        <div className="card-player">
+          <img src={photoUrl || '/player-avatar-placeholder.png'} alt={name} />
+        </div>
+        <div className="card-meta">
+          <div className="rating flex items-center gap-1">
+            {card.overall}
+            {card.trend !== 'flat' && (
+              <span style={{ color: TREND_COLOR[card.trend], fontSize: '0.4em' }}>{TREND_GLYPH[card.trend]}</span>
+            )}
+          </div>
+          <div className="position">{card.position}</div>
+        </div>
+        <div className="card-name">{name}</div>
+        <div className="card-stats">
+          <div className="stat"><span className="stat-value">{card.pac}</span><span className="stat-label">PAC</span></div>
+          <div className="stat"><span className="stat-value">{card.sho}</span><span className="stat-label">SHO</span></div>
+          <div className="stat"><span className="stat-value">{card.pas}</span><span className="stat-label">PAS</span></div>
+          <div className="stat"><span className="stat-value">{card.dri}</span><span className="stat-label">DRI</span></div>
+          <div className="stat"><span className="stat-value">{card.def}</span><span className="stat-label">DEF</span></div>
+          <div className="stat"><span className="stat-value">{card.phy}</span><span className="stat-label">PHY</span></div>
+        </div>
       </div>
-      <div className="card-edge" />
-      <div className="card-player">
-        <img src={photoUrl || '/player-avatar-placeholder.png'} alt={name} />
-      </div>
-      <div className="card-meta">
-        <div className="rating">{card.overall}</div>
-        <div className="position">{card.position}</div>
-      </div>
-      <div className="card-name">{name}</div>
-      <div className="card-stats">
-        <div className="stat"><span className="stat-value">{card.pac}</span><span className="stat-label">PAC</span></div>
-        <div className="stat"><span className="stat-value">{card.sho}</span><span className="stat-label">SHO</span></div>
-        <div className="stat"><span className="stat-value">{card.pas}</span><span className="stat-label">PAS</span></div>
-        <div className="stat"><span className="stat-value">{card.dri}</span><span className="stat-label">DRI</span></div>
-        <div className="stat"><span className="stat-value">{card.def}</span><span className="stat-label">DEF</span></div>
-        <div className="stat"><span className="stat-value">{card.phy}</span><span className="stat-label">PHY</span></div>
-      </div>
+
+      {downloadable && (
+        <button
+          onClick={handleDownload}
+          disabled={downloading}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-zinc-400 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 rounded-lg transition-colors disabled:opacity-50"
+        >
+          {downloading ? 'Exporting...' : 'Download card'}
+        </button>
+      )}
     </div>
   );
 }

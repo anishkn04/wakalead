@@ -1247,18 +1247,18 @@ export async function getUserSeasonHistory(env: Env, userId: number): Promise<Us
  * anyone hit some fixed number of hours. See docs/FUT_CARD_DESIGN.md for
  * the full design rationale, gaming-vector analysis, and decision log.
  *
- * PAC/SHO deliberately use human_lines/human_seconds (not totals) so
- * someone can't inflate their card by leaving an AI agent running for a
- * long "session" without doing the work themselves - ai_lines still count
- * toward PAC, just discounted. PAS/DRI/DEF/PHY are diversity counts or
- * ratios by nature, already immune to that kind of padding.
+ * This app is AI-native - AI-assisted work isn't something to suppress,
+ * so PAC/SHO count both human and AI time/lines, just with AI weighted at
+ * 0.7x (directing an AI well is a real skill, just not quite the same as
+ * doing it yourself). PAS/DRI/DEF/PHY are diversity counts or ratios by
+ * nature and don't need this distinction at all.
  */
 export type CardScope = 'season' | 'career';
 export type CardType = 'icon' | 'legend_hero' | 'white_icon' | 'featured_red' | 'base_gold' | 'base_silver';
 export type CardPosition = 'ST' | 'RW' | 'LW' | 'CAM' | 'CM' | 'CDM' | 'LM' | 'RM' | 'CB' | 'RB' | 'LB' | 'GK';
 
 interface RawUserCardMetrics {
-  human_seconds: number;
+  time_score: number;   // human_seconds + 0.7 * ai_seconds
   output_score: number; // human_lines + 0.7 * ai_lines
   days_active: number;  // days with >= CARD_ACTIVE_SECONDS of total_seconds
   days_tracked: number; // days with any synced row at all
@@ -1267,6 +1267,14 @@ interface RawUserCardMetrics {
   distinct_languages: number;
   distinct_editors: number;
   distinct_os: number;
+  recentActivity: number;  // combined time_score + output_score, last 7 days
+  priorActivity: number;   // combined time_score + output_score, the 7 days before that
+  maxProjectSeconds: number; // total time on their single biggest project (in scope)
+}
+
+export interface NextTierHint {
+  label: string;
+  pointsAway: number;
 }
 
 export interface UserCardAttributes {
@@ -1281,9 +1289,13 @@ export interface UserCardAttributes {
   cardType: CardType;
   provisional: boolean;
   days_active: number;
+  trend: 'up' | 'down' | 'flat';
+  nextTier: NextTierHint | null;
+  hotStreak: number | null; // the higher of day_streak/week_streak when >= 3, else null
 }
 
 const CARD_RATING_FLOOR = 55; // worst-in-cohort attribute still reads as solidly average
+const PHY_RATING_FLOOR = 65;  // PHY specifically never drops below this, regardless of percentile
 const CARD_MIN_DAYS_ACTIVE = 7; // below this, personally provisional - not enough data for a meaningful percentile
 const CARD_MIN_COHORT = 4; // below this many users with any data, percentile ranking is close to meaningless for everyone
 const CARD_ACTIVE_SECONDS = 40 * 60; // a day only counts toward DEF/PHY at 40+ active minutes, not just nonzero
@@ -1311,8 +1323,8 @@ function percentileRanks(values: number[]): number[] {
   return ranks.map((r) => r / (n - 1));
 }
 
-function rescale(percentile: number): number {
-  return Math.round(CARD_RATING_FLOOR + percentile * (99 - CARD_RATING_FLOOR));
+function rescale(percentile: number, floor: number = CARD_RATING_FLOOR): number {
+  return Math.round(floor + percentile * (99 - floor));
 }
 
 /** Longest run of calendar-consecutive dates in a sorted, deduplicated date array. */
@@ -1346,7 +1358,11 @@ async function getScopedTableNames(env: Env, scope: CardScope, baseTable: string
   return names;
 }
 
-async function getCardMetricsForAllUsers(env: Env, scope: CardScope): Promise<Map<number, RawUserCardMetrics>> {
+async function getCardMetricsForAllUsers(env: Env, scope: CardScope, today: string): Promise<Map<number, RawUserCardMetrics>> {
+  const recentStart = shiftDate(today, -6);   // last 7 days, inclusive of today
+  const priorStart = shiftDate(today, -13);   // the 7 days before that
+  const priorEnd = shiftDate(today, -7);
+
   const [dailyTables, breakdownTables] = await Promise.all([
     getScopedTableNames(env, scope, 'daily_stats'),
     getScopedTableNames(env, scope, 'user_stat_breakdown'),
@@ -1354,13 +1370,13 @@ async function getCardMetricsForAllUsers(env: Env, scope: CardScope): Promise<Ma
 
   const [dailyResults, breakdownResults] = await Promise.all([
     Promise.all(dailyTables.map((t) =>
-      env.DB.prepare(`SELECT user_id, date, total_seconds, human_seconds, ai_lines, human_lines FROM ${t}`).all<{
-        user_id: number; date: string; total_seconds: number; human_seconds: number; ai_lines: number; human_lines: number;
+      env.DB.prepare(`SELECT user_id, date, total_seconds, human_seconds, ai_seconds, ai_lines, human_lines FROM ${t}`).all<{
+        user_id: number; date: string; total_seconds: number; human_seconds: number; ai_seconds: number; ai_lines: number; human_lines: number;
       }>()
     )),
     Promise.all(breakdownTables.map((t) =>
-      env.DB.prepare(`SELECT user_id, kind, name FROM ${t} WHERE kind IN ('project','language','editor','os')`).all<{
-        user_id: number; kind: string; name: string;
+      env.DB.prepare(`SELECT user_id, kind, name, seconds FROM ${t} WHERE kind IN ('project','language','editor','os')`).all<{
+        user_id: number; kind: string; name: string; seconds: number;
       }>()
     )),
   ]);
@@ -1373,8 +1389,9 @@ async function getCardMetricsForAllUsers(env: Env, scope: CardScope): Promise<Ma
     let m = byUser.get(userId);
     if (!m) {
       m = {
-        human_seconds: 0, output_score: 0, days_active: 0, days_tracked: 0, longest_streak: 0,
+        time_score: 0, output_score: 0, days_active: 0, days_tracked: 0, longest_streak: 0,
         distinct_projects: 0, distinct_languages: 0, distinct_editors: 0, distinct_os: 0,
+        recentActivity: 0, priorActivity: 0, maxProjectSeconds: 0,
       };
       byUser.set(userId, m);
     }
@@ -1384,8 +1401,12 @@ async function getCardMetricsForAllUsers(env: Env, scope: CardScope): Promise<Ma
   const activeDatesByUser = new Map<number, string[]>();
   for (const row of dailyRows.results) {
     const m = ensure(row.user_id);
-    m.human_seconds += row.human_seconds || 0;
+    const dayActivity = (row.human_seconds || 0) + 0.7 * (row.ai_seconds || 0)
+      + (row.human_lines || 0) + 0.7 * (row.ai_lines || 0);
+    m.time_score += (row.human_seconds || 0) + 0.7 * (row.ai_seconds || 0);
     m.output_score += (row.human_lines || 0) + 0.7 * (row.ai_lines || 0);
+    if (row.date >= recentStart) m.recentActivity += dayActivity;
+    else if (row.date >= priorStart && row.date <= priorEnd) m.priorActivity += dayActivity;
     m.days_tracked += 1;
     if ((row.total_seconds || 0) >= CARD_ACTIVE_SECONDS) {
       m.days_active += 1;
@@ -1399,11 +1420,18 @@ async function getCardMetricsForAllUsers(env: Env, scope: CardScope): Promise<Ma
   }
 
   const distinctSets = new Map<number, Record<'project' | 'language' | 'editor' | 'os', Set<string>>>();
+  const projectSecondsByUser = new Map<number, Map<string, number>>();
   for (const row of breakdownRows.results) {
     const kind = row.kind as 'project' | 'language' | 'editor' | 'os';
     const sets = distinctSets.get(row.user_id) ?? { project: new Set(), language: new Set(), editor: new Set(), os: new Set() };
     sets[kind]?.add(row.name);
     distinctSets.set(row.user_id, sets);
+
+    if (kind === 'project') {
+      const projects = projectSecondsByUser.get(row.user_id) ?? new Map<string, number>();
+      projects.set(row.name, (projects.get(row.name) ?? 0) + (row.seconds || 0));
+      projectSecondsByUser.set(row.user_id, projects);
+    }
   }
   for (const [userId, sets] of distinctSets) {
     const m = ensure(userId);
@@ -1411,6 +1439,9 @@ async function getCardMetricsForAllUsers(env: Env, scope: CardScope): Promise<Ma
     m.distinct_languages = sets.language.size;
     m.distinct_editors = sets.editor.size;
     m.distinct_os = sets.os.size;
+  }
+  for (const [userId, projects] of projectSecondsByUser) {
+    ensure(userId).maxProjectSeconds = Math.max(0, ...projects.values());
   }
 
   return byUser;
@@ -1493,16 +1524,18 @@ async function getSeasonChampionCounts(env: Env): Promise<Map<number, number>> {
 
 /** Computes every user's card in one pass - percentiles need the whole cohort anyway. */
 export async function computeCardsForAllUsers(env: Env, scope: CardScope, today: string): Promise<Map<number, UserCardAttributes>> {
-  const raw = await getCardMetricsForAllUsers(env, scope);
+  const raw = await getCardMetricsForAllUsers(env, scope, today);
   const userIds = [...raw.keys()];
 
-  const dimensions: Array<{ key: 'pac' | 'sho' | 'pas' | 'dri' | 'def' | 'phy'; extract: (m: RawUserCardMetrics) => number }> = [
-    { key: 'pac', extract: (m) => m.output_score },
-    { key: 'sho', extract: (m) => m.human_seconds },
+  // PHY is handled separately below (a blend of two differently-scaled raw
+  // metrics - streak days vs. project seconds - so each needs its own
+  // percentile pass before they can be combined).
+  const dimensions: Array<{ key: 'pac' | 'sho' | 'pas' | 'dri' | 'def'; extract: (m: RawUserCardMetrics) => number }> = [
+    { key: 'pac', extract: (m) => m.time_score },
+    { key: 'sho', extract: (m) => m.output_score },
     { key: 'pas', extract: (m) => m.distinct_projects + m.distinct_languages },
     { key: 'dri', extract: (m) => m.distinct_editors + m.distinct_os },
     { key: 'def', extract: (m) => (m.days_tracked > 0 ? m.days_active / m.days_tracked : 0) },
-    { key: 'phy', extract: (m) => m.longest_streak },
   ];
 
   const ratingsByUser = new Map<number, Record<string, number>>();
@@ -1515,6 +1548,17 @@ export async function computeCardsForAllUsers(env: Env, scope: CardScope, today:
       ratingsByUser.set(id, r);
     });
   }
+
+  // PHY (stamina) = 60% consecutive-day streak, 40% time sunk into their
+  // single biggest project - two forms of "staying power," ranked
+  // independently against the cohort (wildly different raw scales: days
+  // vs. seconds) then blended as percentiles, rescaled once at the end.
+  const streakPercentiles = percentileRanks(userIds.map((id) => raw.get(id)!.longest_streak));
+  const projectPercentiles = percentileRanks(userIds.map((id) => raw.get(id)!.maxProjectSeconds));
+  userIds.forEach((id, i) => {
+    const blended = 0.6 * streakPercentiles[i] + 0.4 * projectPercentiles[i];
+    ratingsByUser.get(id)!.phy = rescale(blended, PHY_RATING_FLOOR);
+  });
 
   const overallByUser = new Map<number, number>();
   for (const id of userIds) {
@@ -1556,6 +1600,35 @@ export async function computeCardsForAllUsers(env: Env, scope: CardScope, today:
     else if (overall >= 75) cardType = 'base_gold';
     else cardType = 'base_silver';
 
+    // Recent (last 7 days) vs prior (7 days before that) combined activity -
+    // a small trend arrow, not a persisted history, so no new storage needed.
+    const rawMetrics = raw.get(id)!;
+    let trend: UserCardAttributes['trend'] = 'flat';
+    if (rawMetrics.priorActivity <= 0 && rawMetrics.recentActivity > 0) trend = 'up';
+    else if (rawMetrics.recentActivity <= 0 && rawMetrics.priorActivity > 0) trend = 'down';
+    else if (rawMetrics.priorActivity > 0) {
+      const change = (rawMetrics.recentActivity - rawMetrics.priorActivity) / rawMetrics.priorActivity;
+      trend = change > 0.05 ? 'up' : change < -0.05 ? 'down' : 'flat';
+    }
+
+    // How far from the next meaningful milestone - only well-defined for the
+    // two base tiers; the special cards are qualitatively different, not
+    // "more overall points away".
+    let nextTier: NextTierHint | null = null;
+    if (cardType === 'base_silver') {
+      nextTier = { label: 'Gold', pointsAway: Math.max(1, 75 - overall) };
+    } else if (cardType === 'base_gold' && highestOverallUserId !== null) {
+      const gap = overallByUser.get(highestOverallUserId)! - overall;
+      if (gap > 0) nextTier = { label: 'Hero', pointsAway: gap };
+    }
+
+    // Exposed regardless of cardType so the frontend can show a small flame
+    // badge on ANY card for someone building momentum, not just full
+    // Featured Red cards (which already need a higher bar to earn outright).
+    const hotStreak = streak && Math.max(streak.day_streak, streak.week_streak) >= 3
+      ? Math.max(streak.day_streak, streak.week_streak)
+      : null;
+
     cards.set(id, {
       ...attrs,
       overall,
@@ -1563,13 +1636,42 @@ export async function computeCardsForAllUsers(env: Env, scope: CardScope, today:
       cardType,
       provisional: cohortTooSmall || raw.get(id)!.days_active < CARD_MIN_DAYS_ACTIVE,
       days_active: raw.get(id)!.days_active,
+      trend,
+      nextTier,
+      hotStreak,
     });
   }
   return cards;
 }
 
-export async function getUserCard(env: Env, userId: number, scope: CardScope, today: string): Promise<UserCardAttributes | null> {
+const CARD_CACHE_TTL_SECONDS = 60;
+
+/**
+ * Percentile ranking needs the whole cohort recomputed together, and both
+ * getUserCard and getAllUserCards need that same computation - cached here
+ * (reusing the SESSIONS KV namespace under its own key prefix, rather than
+ * provisioning a new KV namespace for one small cache) so a burst of
+ * requests (e.g. the gallery + several profile views) within the same
+ * minute doesn't each redo the full per-user aggregation from scratch.
+ * Short TTL - underlying data only changes on sync/reset, not every
+ * second, so up to 60s of staleness is an easy trade for the savings.
+ */
+async function getCachedCardsForAllUsers(env: Env, scope: CardScope, today: string): Promise<Map<number, UserCardAttributes>> {
+  const cacheKey = `card_cache:${scope}:${today}`;
+  const cached = await env.SESSIONS.get(cacheKey, 'json') as Record<string, UserCardAttributes> | null;
+  if (cached) {
+    return new Map(Object.entries(cached).map(([id, attrs]) => [Number(id), attrs]));
+  }
+
   const cards = await computeCardsForAllUsers(env, scope, today);
+  await env.SESSIONS.put(cacheKey, JSON.stringify(Object.fromEntries(cards)), {
+    expirationTtl: CARD_CACHE_TTL_SECONDS,
+  });
+  return cards;
+}
+
+export async function getUserCard(env: Env, userId: number, scope: CardScope, today: string): Promise<UserCardAttributes | null> {
+  const cards = await getCachedCardsForAllUsers(env, scope, today);
   return cards.get(userId) ?? null;
 }
 
@@ -1583,7 +1685,7 @@ export interface UserCardWithProfile extends UserCardAttributes {
 /** Every non-banned user's card at once, sorted best overall first - for a leaderboard-style FUT card gallery. */
 export async function getAllUserCards(env: Env, scope: CardScope, today: string): Promise<UserCardWithProfile[]> {
   const [cards, users] = await Promise.all([
-    computeCardsForAllUsers(env, scope, today),
+    getCachedCardsForAllUsers(env, scope, today),
     env.DB.prepare('SELECT id, username, display_name, photo_url FROM users WHERE is_banned = 0').all<{
       id: number; username: string; display_name: string | null; photo_url: string | null;
     }>(),

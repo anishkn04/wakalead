@@ -18,38 +18,47 @@ other user**, never a fixed bar. Two consequences, both intentional:
   activity level changes over time (more users, more/less activity) -
   nothing to retune.
 
-## Core principle: can't pad the card by just running the clock
+## Core principle: AI-native, not AI-suppressed
 
-The specific worry: someone leaves an editor (or an AI agent) open for a
-long stretch without doing much themselves, racking up `total_seconds`
-without real output. Fix: the two time/output-based attributes use the
-**human-specific** columns we already separate out (`human_seconds`,
-`human_lines`), not totals - so idle-ish time doesn't inflate SHO at all.
-AI-driven lines still count toward PAC (output), at a discount relative to
-human_lines - directing an AI well is a real skill, just not weighted
-quite as high as writing the line yourself.
+This app is built for a team that uses AI as a normal part of coding, so
+the card doesn't wall AI-assisted work off from "real" activity. Both
+PAC (time) and SHO (output) count human + AI activity, with AI weighted
+at 0.7x in each - directing an AI well is a real skill, just not quite
+weighted as high as doing it yourself. Earlier versions of this design
+excluded AI from PAC entirely (to guard against someone leaving an
+autonomous agent running unattended); that's now handled honestly instead
+as a known, unsolved limitation (see Gaming vectors below) rather than by
+discounting AI-assisted time across the board.
 
 The other four attributes are diversity counts or ratios by nature
 (distinct projects/languages/editors/OS, days-active ratio, streak length)
-- none of them can be padded by a long low-effort session in the first
-place, so they need no special handling.
+- they don't measure human-vs-AI at all, so this distinction doesn't apply
+to them.
 
 ## The 6 attributes
 
 | Stat | Formula (before percentile ranking) | Rationale |
 |---|---|---|
-| **PAC** | `SUM(human_lines) + 0.7 * SUM(ai_lines)` | Real output weighted highest; AI-assisted lines count for most of a human line (confirmed) |
-| **SHO** | `SUM(human_seconds)` | Real active time only |
+| **PAC** | `SUM(human_seconds) + 0.7 * SUM(ai_seconds)` | Active time, AI-assisted time counted at a discount |
+| **SHO** | `SUM(human_lines) + 0.7 * SUM(ai_lines)` | Real output weighted highest; AI-assisted lines count for most of a human line (confirmed) |
 | **PAS** | `distinct(project) + distinct(language)` | Breadth across contexts |
 | **DRI** | `distinct(editor) + distinct(os)` | Tool versatility |
 | **DEF** | `days_active / days_tracked` | Consistency ratio - can't be padded by one big session |
-| **PHY** | `longest_streak` (consecutive calendar days with activity) | Stamina |
+| **PHY** | 60% `longest_streak` + 40% `MAX(project_seconds)` (each percentile-ranked separately, then blended) | Stamina - both day-streak endurance and sustained commitment to one project |
 
 `days_active` = distinct dates with `total_seconds > 0`. `days_tracked` =
 distinct dates with any synced row at all (denominator for DEF).
 
 Every raw value above is computed **per user**, across the whole cohort of
 users with any data in scope, before the percentile step runs.
+
+**PHY is a blend, not a single raw metric** - day-streak and single-project
+seconds live on wildly different scales (small integer vs. potentially
+huge), so they can't just be summed like PAS/DRI can. Instead each is
+percentile-ranked against the cohort *independently*, then the two
+percentiles are combined 60/40 (streak/project) before the one final
+rescale into 0-99 - keeps both sub-metrics "relative, not absolute" on
+their own terms before they're blended.
 
 ## Percentile -> 0-99 scale
 
@@ -72,6 +81,9 @@ For each of the 6 attributes independently:
    solidly average, not "broken," the same way FIFA rarely rates anyone
    below the low 40s (we're a bit more generous, since a small team's
    "worst" performer is often still putting in real, legitimate work).
+   **PHY uses its own higher floor of 65** instead of 55 - applied after
+   the streak/project blend, so PHY specifically never drops below 65
+   regardless of percentile.
 
 `overall` = simple average of the 6 already-rescaled attribute ratings,
 rounded. (Normalizing each attribute to the 0-99 band *first*, then
@@ -218,19 +230,19 @@ our own formulas (things we could actually tighten).
 
 ### WakaTime-level - we have no visibility or control here
 
-- **AFK padding via the heartbeat timeout.** This is the big one, and it's
-  not closed by the human-vs-AI split at all. WakaTime doesn't track
-  continuous activity - it converts sparse heartbeats into "duration"
-  using a timeout window (user-configurable, up to a few hours on some
-  plans). Send one trivial keystroke every ~14 minutes while actually AFK
+- **AFK padding via the heartbeat timeout.** This is the big one, and
+  nothing in our formulas closes it. WakaTime doesn't track continuous
+  activity - it converts sparse heartbeats into "duration" using a
+  timeout window (user-configurable, up to a few hours on some plans).
+  Send one trivial keystroke every ~14 minutes while actually AFK
   (meeting, coffee, browsing) and WakaTime counts the *entire gap* as
-  active coding time. Because this still comes through as a real,
-  non-AI-category heartbeat, it inflates `human_seconds` - exactly the
-  field SHO was built around specifically to avoid AI-padding. The
-  human/AI split defends against "let AI do the work," not "barely touch
-  the keyboard for a long time." We only ever see WakaTime's
-  pre-aggregated `summaries` duration, not raw heartbeats, so we can't see
-  this happening even if we wanted to check.
+  active coding time, inflating `human_seconds` directly - and since PAC
+  now counts human time at full weight (this app doesn't discount AI, so
+  it was never discounting idle time either), this flows straight into
+  PAC with no defense. We only ever see WakaTime's pre-aggregated
+  `summaries` duration, not raw heartbeats, so we can't see this happening
+  even if we wanted to check. Unsolved, and not specific to us - every
+  WakaTime-based leaderboard shares this ceiling.
 - **Scripted/fake heartbeats.** There are known ways to ping WakaTime's
   heartbeat endpoint on a timer without coding at all - a small script
   that just phones in "still coding" periodically. Indistinguishable from
@@ -262,7 +274,7 @@ our own formulas (things we could actually tighten).
   inflate distinct-project/language/editor/OS counts - the metric can't
   tell "genuinely worked across five real projects" from "made five empty
   files to pad the number."
-- **PAC (line count) inherits the general "lines changed" gaming problem**
+- **SHO (line count) inherits the general "lines changed" gaming problem**
   every LOC-based metric has - large low-value diffs (reformatting,
   duplicated boilerplate, mass whitespace changes, or straight
   copy-pasted code with real understanding) count the same as meaningful
@@ -310,7 +322,7 @@ vector available.
 ## Open questions before implementation resumes
 
 1. ~~Confirm the attribute formulas and the AI-line discount weight~~ -
-   **decided: 0.7x** (`human_lines + 0.7 * ai_lines`, feeds PAC).
+   **decided: 0.7x** (`human_lines + 0.7 * ai_lines`, feeds SHO).
 2. ~~Confirm the floor and card assignment~~ - **decided: floor = 55**;
    superseded by the full 6-card cascade above (Icon/White Icon/
    Legend-Hero/Featured Red/Base Gold/Base Silver) rather than a simple
