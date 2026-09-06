@@ -975,3 +975,179 @@ export async function getRankOneStats(
   return stats;
 }
 
+/**
+ * Season resets - "archive current stats and start fresh" for an admin.
+ *
+ * Archives every table that drives the leaderboard/streaks/"since tracking"
+ * totals by renaming it to `<table>_season_<N>` and creating a fresh empty
+ * one in its place, then records the reset. `users`, `user_photos`, and
+ * `user_stats` (the real WakaTime lifetime total, explicitly labeled as such
+ * in the UI) are deliberately left untouched - accounts, avatars, and true
+ * lifetime history all survive a reset unchanged.
+ *
+ * `fetch_log` is included so the very next sync actually re-fetches "today"
+ * instead of thinking it's already up to date (it also un-gates the once-a-
+ * week all_time/photo refreshes, which is harmless - they just re-fetch the
+ * same values a little early).
+ */
+interface ResettableTable {
+  name: string;
+  createSql: string;
+  indexes: { name: string; sql: string }[];
+}
+
+const SEASON_RESET_TABLES: ResettableTable[] = [
+  {
+    name: 'daily_stats',
+    createSql: `
+      CREATE TABLE daily_stats (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        date TEXT NOT NULL,
+        total_seconds INTEGER NOT NULL DEFAULT 0,
+        ai_seconds INTEGER NOT NULL DEFAULT 0,
+        human_seconds INTEGER NOT NULL DEFAULT 0,
+        ai_lines INTEGER NOT NULL DEFAULT 0,
+        human_lines INTEGER NOT NULL DEFAULT 0,
+        fetched_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(user_id, date)
+      )`,
+    indexes: [
+      { name: 'idx_daily_stats_user_date', sql: 'CREATE INDEX idx_daily_stats_user_date ON daily_stats(user_id, date)' },
+      { name: 'idx_daily_stats_date', sql: 'CREATE INDEX idx_daily_stats_date ON daily_stats(date)' },
+    ],
+  },
+  {
+    name: 'fetch_log',
+    createSql: `
+      CREATE TABLE fetch_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        fetch_type TEXT NOT NULL,
+        fetch_date TEXT NOT NULL,
+        status TEXT NOT NULL,
+        error_message TEXT,
+        fetched_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )`,
+    indexes: [
+      { name: 'idx_fetch_log_user_date', sql: 'CREATE INDEX idx_fetch_log_user_date ON fetch_log(user_id, fetch_date)' },
+    ],
+  },
+  {
+    name: 'user_stat_breakdown',
+    createSql: `
+      CREATE TABLE user_stat_breakdown (
+        user_id INTEGER NOT NULL,
+        date TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        name TEXT NOT NULL,
+        seconds INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (user_id, date, kind, name),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )`,
+    indexes: [
+      { name: 'idx_breakdown_user_kind', sql: 'CREATE INDEX idx_breakdown_user_kind ON user_stat_breakdown(user_id, kind)' },
+      { name: 'idx_breakdown_user_date', sql: 'CREATE INDEX idx_breakdown_user_date ON user_stat_breakdown(user_id, date)' },
+    ],
+  },
+  {
+    name: 'user_ai_models',
+    createSql: `
+      CREATE TABLE user_ai_models (
+        user_id INTEGER NOT NULL,
+        date TEXT NOT NULL,
+        name TEXT NOT NULL,
+        lines INTEGER NOT NULL DEFAULT 0,
+        cost REAL NOT NULL DEFAULT 0,
+        PRIMARY KEY (user_id, date, name),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )`,
+    indexes: [
+      { name: 'idx_ai_models_user', sql: 'CREATE INDEX idx_ai_models_user ON user_ai_models(user_id)' },
+    ],
+  },
+  {
+    name: 'user_ai_daily',
+    createSql: `
+      CREATE TABLE user_ai_daily (
+        user_id INTEGER NOT NULL,
+        date TEXT NOT NULL,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        sessions INTEGER NOT NULL DEFAULT 0,
+        prompt_events INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (user_id, date),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )`,
+    indexes: [],
+  },
+  {
+    name: 'leaderboard_history',
+    createSql: `
+      CREATE TABLE leaderboard_history (
+        user_id INTEGER NOT NULL,
+        period_start TEXT NOT NULL,
+        period TEXT NOT NULL,
+        metric TEXT NOT NULL,
+        rank INTEGER NOT NULL,
+        value INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (user_id, period_start, period, metric),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )`,
+    indexes: [
+      { name: 'idx_leaderboard_history_period_metric_rank', sql: 'CREATE INDEX idx_leaderboard_history_period_metric_rank ON leaderboard_history(period, metric, rank)' },
+      { name: 'idx_leaderboard_history_period_metric_start', sql: 'CREATE INDEX idx_leaderboard_history_period_metric_start ON leaderboard_history(period, metric, period_start)' },
+    ],
+  },
+];
+
+export interface SeasonReset {
+  season_number: number;
+  archived_at: number;
+  reset_by: number | null;
+}
+
+/** The season currently being played: 1 + however many resets have happened. */
+export async function getCurrentSeason(env: Env): Promise<number> {
+  const row = await env.DB.prepare(
+    'SELECT COALESCE(MAX(season_number), 0) + 1 as season FROM season_resets'
+  ).first<{ season: number }>();
+  return row?.season ?? 1;
+}
+
+export async function getSeasonHistory(env: Env): Promise<SeasonReset[]> {
+  const rows = await env.DB.prepare(
+    'SELECT season_number, archived_at, reset_by FROM season_resets ORDER BY season_number DESC'
+  ).all<SeasonReset>();
+  return rows.results;
+}
+
+/**
+ * Archive the current season's stats tables and start fresh. Runs each
+ * table's drop-indexes -> rename -> recreate-table -> recreate-indexes
+ * sequence fully before moving to the next table, so a mid-way failure
+ * leaves at most one table in a partial state rather than all of them.
+ */
+export async function resetSeason(env: Env, adminUserId: number): Promise<{ archivedSeason: number }> {
+  const archivedSeason = await getCurrentSeason(env);
+
+  for (const table of SEASON_RESET_TABLES) {
+    for (const idx of table.indexes) {
+      await env.DB.prepare(`DROP INDEX IF EXISTS ${idx.name}`).run();
+    }
+    await env.DB.prepare(`ALTER TABLE ${table.name} RENAME TO ${table.name}_season_${archivedSeason}`).run();
+    await env.DB.prepare(table.createSql).run();
+    for (const idx of table.indexes) {
+      await env.DB.prepare(idx.sql).run();
+    }
+  }
+
+  await env.DB.prepare(
+    'INSERT INTO season_resets (season_number, archived_at, reset_by) VALUES (?, ?, ?)'
+  ).bind(archivedSeason, Date.now(), adminUserId).run();
+
+  return { archivedSeason };
+}
+

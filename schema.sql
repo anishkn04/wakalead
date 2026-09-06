@@ -140,3 +140,14 @@ CREATE TABLE IF NOT EXISTS user_photos (
     fetched_at INTEGER NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+-- History of admin-triggered "season resets" (archive current stats, start
+-- fresh). season_number is the season being archived at reset time; the
+-- live tables always represent season (MAX(season_number) + 1), or season 1
+-- if this table is empty. See resetSeason() in worker/database.ts.
+CREATE TABLE IF NOT EXISTS season_resets (
+    season_number INTEGER PRIMARY KEY,
+    archived_at INTEGER NOT NULL,
+    reset_by INTEGER,
+    FOREIGN KEY (reset_by) REFERENCES users(id) ON DELETE SET NULL
+);

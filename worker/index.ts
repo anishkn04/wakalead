@@ -1,6 +1,6 @@
 import { Env } from './types';
 import { exchangeCodeForToken, fetchWakaTimeUser, fetchPhotoData } from './wakatime';
-import { createOrUpdateUser, getLeaderboard, getWeeklyData, getAllUsers, deleteUser, banUser, unbanUser, getUserById, getLastSyncTime, getUserTooltipStats, getCompareStats, upsertUserPhoto } from './database';
+import { createOrUpdateUser, getLeaderboard, getWeeklyData, getAllUsers, deleteUser, banUser, unbanUser, getUserById, getLastSyncTime, getUserTooltipStats, getCompareStats, upsertUserPhoto, getCurrentSeason, getSeasonHistory, resetSeason } from './database';
 import { createSession, verifySession, deleteSession, extractSessionId } from './session';
 import { fetchDataForAllUsers, fetchTodayDataForUser, fetchWeekDataForUser, fetchTodayDataForAllUsers, fetchWeekDataForAllUsers, fetchPhotosForAllUsers } from './fetcher';
 import { getProfileData } from './profile';
@@ -486,6 +486,22 @@ export default {
           const useToday = url.searchParams.get('today') === 'true';
           await fetchDataForAllUsers(env, useToday, dateParam || undefined);
           return jsonResponse({ success: true, message: `Data fetch initiated for ${dateParam || (useToday ? 'today' : 'yesterday')}` });
+        }
+
+        if (path === '/api/admin/season' && request.method === 'GET') {
+          const [currentSeason, history] = await Promise.all([
+            getCurrentSeason(env),
+            getSeasonHistory(env),
+          ]);
+          return jsonResponse({ currentSeason, history });
+        }
+
+        if (path === '/api/admin/reset-season' && request.method === 'POST') {
+          // Archives daily_stats/fetch_log/breakdowns/leaderboard_history
+          // under a "_season_N" suffix and starts fresh. Users, photos, and
+          // each user's real WakaTime lifetime total are left untouched.
+          const result = await resetSeason(env, user.id);
+          return jsonResponse({ success: true, ...result });
         }
       }
 

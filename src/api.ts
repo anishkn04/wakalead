@@ -63,6 +63,17 @@ export interface WeeklyData {
   }[];
 }
 
+export interface SeasonResetRecord {
+  season_number: number;
+  archived_at: number;
+  reset_by: number | null;
+}
+
+export interface SeasonInfo {
+  currentSeason: number;
+  history: SeasonResetRecord[];
+}
+
 /** One aggregated breakdown entry (name + total seconds + share %) */
 export interface TooltipStatBreakdown {
   name: string;
@@ -296,6 +307,15 @@ class ApiClient {
   /** Backfill/repair a specific past date (e.g. one the cron missed). */
   async backfillDate(date: string): Promise<void> {
     await this.request(`/admin/fetch-now?date=${date}`, { method: 'POST' });
+  }
+
+  async getSeasonInfo(): Promise<SeasonInfo> {
+    return this.request<SeasonInfo>('/admin/season');
+  }
+
+  /** Archives current stats and starts a fresh season. Accounts/photos/real WakaTime lifetime totals are untouched. */
+  async resetSeason(): Promise<{ success: boolean; archivedSeason: number }> {
+    return this.request<{ success: boolean; archivedSeason: number }>('/admin/reset-season', { method: 'POST' });
   }
 
   async refreshAll(): Promise<void> {
