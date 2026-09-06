@@ -13,6 +13,8 @@ export function AdminPanel({ currentUser }: AdminPanelProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
+  const [backfillDate, setBackfillDate] = useState('');
+  const [backfilling, setBackfilling] = useState(false);
 
   useEffect(() => {
     loadUsers();
@@ -69,6 +71,19 @@ export function AdminPanel({ currentUser }: AdminPanelProps) {
     }
   };
 
+  const handleBackfill = async () => {
+    if (!backfillDate) return;
+    try {
+      setBackfilling(true);
+      await api.backfillDate(backfillDate);
+      setMessage(`Backfill triggered for ${backfillDate} - re-synced stats and recomputed the leaderboard/streaks for that date`);
+    } catch (error: any) {
+      setMessage('Error backfilling date: ' + error.message);
+    } finally {
+      setBackfilling(false);
+    }
+  };
+
   if (!currentUser.is_admin) {
     return null;
   }
@@ -82,6 +97,31 @@ export function AdminPanel({ currentUser }: AdminPanelProps) {
         <p className="text-sm text-slate-500 dark:text-zinc-500 mt-1">
           Manage users
         </p>
+      </div>
+
+      <div className="mb-6 p-4 bg-slate-50 dark:bg-zinc-800/50 rounded-xl">
+        <p className="text-sm font-medium text-slate-900 dark:text-white mb-1">
+          Backfill a date
+        </p>
+        <p className="text-xs text-slate-500 dark:text-zinc-500 mb-3">
+          Re-syncs stats and recomputes the leaderboard/streaks for one past date - use this if the daily cron ever missed a day.
+        </p>
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={backfillDate}
+            onChange={(e) => setBackfillDate(e.target.value)}
+            max={new Date().toISOString().slice(0, 10)}
+            className="px-3 py-1.5 text-sm rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-slate-900 dark:text-white"
+          />
+          <button
+            onClick={handleBackfill}
+            disabled={!backfillDate || backfilling}
+            className="px-3 py-1.5 text-sm font-medium text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950/30 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+          >
+            {backfilling ? 'Backfilling...' : 'Backfill'}
+          </button>
+        </div>
       </div>
 
       {message && (

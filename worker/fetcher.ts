@@ -129,21 +129,33 @@ async function ensureAllTimeStats(env: Env, userId: number, username: string, ac
 /**
  * Data fetcher - runs on a scheduled cron job
  * Fetches yesterday's data for all users to stay within rate limits
- * 
+ *
  * Strategy:
  * - Runs once per day at 2 AM UTC
  * - Fetches previous day's data (which is now complete)
  * - Stores in daily_stats table
  * - Logs all fetch attempts for debugging and rate limit tracking
+ *
+ * `explicitDate` (YYYY-MM-DD) overrides `useToday` entirely - used by the
+ * admin backfill endpoint to repair a specific past date (e.g. one the cron
+ * missed) instead of only ever being able to target today/yesterday. Safe to
+ * re-run on a date that's already synced: per-user fetches are skipped via
+ * `wasFetchedToday`, but the leaderboard recompute at the end always runs,
+ * which is exactly what a `leaderboard_history` repair needs.
  */
-export async function fetchDataForAllUsers(env: Env, useToday = false): Promise<void> {
+export async function fetchDataForAllUsers(env: Env, useToday = false, explicitDate?: string): Promise<void> {
   console.log('Starting scheduled data fetch...');
 
-  const targetDate = getNepalDate();
-  if (!useToday) {
-    targetDate.setUTCDate(targetDate.getUTCDate() - 1);
+  let dateStr: string;
+  if (explicitDate) {
+    dateStr = explicitDate;
+  } else {
+    const targetDate = getNepalDate();
+    if (!useToday) {
+      targetDate.setUTCDate(targetDate.getUTCDate() - 1);
+    }
+    dateStr = formatDate(targetDate);
   }
-  const dateStr = formatDate(targetDate);
 
   // Get all users
   const users = await getAllUsers(env);
@@ -266,6 +278,18 @@ export async function fetchTodayDataForUser(
       await ensurePhoto(env, userId, `user-${userId}`, accessToken, today);
     } catch (error: any) {
       console.error('Error updating user stats:', error);
+    }
+
+    // Refresh today's rank-one/streak data now that this user's numbers
+    // changed - ranks are global, so this recomputes for everyone, not just
+    // the logging-in user. Without this, streaks only ever update when an
+    // admin force-syncs or the daily cron runs (which only closes out
+    // *yesterday*), so a normal login would otherwise never move "today".
+    try {
+      await computeAndStoreDailyLeaderboard(env, today);
+      await computeAndStoreWeeklyLeaderboard(env, today);
+    } catch (error: any) {
+      console.error('Error computing leaderboards after login sync:', error);
     }
   } catch (error: any) {
     console.error('Error fetching today data:', error);

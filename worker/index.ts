@@ -477,10 +477,15 @@ export default {
         }
 
         if (path === '/api/admin/fetch-now') {
-          // Trigger manual data fetch for today
+          // Trigger manual data fetch for today/yesterday, or an explicit
+          // past date (e.g. to repair a day the cron missed).
+          const dateParam = url.searchParams.get('date');
+          if (dateParam && !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+            return errorResponse('Invalid date, expected YYYY-MM-DD', 400);
+          }
           const useToday = url.searchParams.get('today') === 'true';
-          await fetchDataForAllUsers(env, useToday);
-          return jsonResponse({ success: true, message: `Data fetch initiated for ${useToday ? 'today' : 'yesterday'}` });
+          await fetchDataForAllUsers(env, useToday, dateParam || undefined);
+          return jsonResponse({ success: true, message: `Data fetch initiated for ${dateParam || (useToday ? 'today' : 'yesterday')}` });
         }
       }
 

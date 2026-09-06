@@ -293,6 +293,11 @@ class ApiClient {
     await this.request(`/admin/fetch-now?today=${today}`, { method: 'POST' });
   }
 
+  /** Backfill/repair a specific past date (e.g. one the cron missed). */
+  async backfillDate(date: string): Promise<void> {
+    await this.request(`/admin/fetch-now?date=${date}`, { method: 'POST' });
+  }
+
   async refreshAll(): Promise<void> {
     await this.request('/refresh-all', { method: 'POST' });
   }
