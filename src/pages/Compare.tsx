@@ -4,11 +4,15 @@ import {
   api,
   LeaderboardEntry,
   CompareStats,
+  CardScope,
+  UserCard,
+  UserCardWithProfile,
   formatDuration,
   formatLines,
   formatDate,
 } from '../api';
 import { Header } from '../components/Header';
+import { PlayerCard, CARD_TYPE_LABEL } from '../components/PlayerCard';
 import { hashHue } from '../components/StatsPanel';
 
 const MAX_USERS = 8;
@@ -47,6 +51,11 @@ interface CompareRow {
   label: string;
   kind: RowKind;
   get: (s: CompareStats) => number | string | null;
+  /**
+   * Card-sourced rows read from the user's FUT card instead of CompareStats.
+   * When present, SectionRows and the score footer use this over `get`.
+   */
+  getCard?: (c: UserCard) => number | string | null;
   /** win = higher is better (default), loss = lower is better (e.g. AI usage) */
   direction?: RowDirection;
   sub?: (s: CompareStats) => string | null;
@@ -62,6 +71,8 @@ interface Column {
   user: LeaderboardEntry | null;
   stats: CompareStats | null | undefined;
   loading: boolean;
+  card: UserCardWithProfile | null | undefined;
+  cardLoading: boolean;
 }
 
 const NUMERIC_KINDS: RowKind[] = ['duration', 'lines', 'number', 'percent', 'tokens', 'money'];
@@ -125,7 +136,33 @@ const SECTIONS: CompareSection[] = [
   },
 ];
 
-const ALL_ROWS = SECTIONS.flatMap((s) => s.rows);
+/**
+ * FUT card ratings, compared like any other stat. Card numbers are
+ * percentile ranks (55-99) against the whole group, so higher is better
+ * across the board - they join the scored rows automatically.
+ */
+const FUT_SECTION: CompareSection = {
+  title: 'FUT Card',
+  rows: [
+    { label: 'Overall', kind: 'number', get: () => null, getCard: (c) => c.overall },
+    { label: 'PAC', kind: 'number', get: () => null, getCard: (c) => c.pac },
+    { label: 'SHO', kind: 'number', get: () => null, getCard: (c) => c.sho },
+    { label: 'PAS', kind: 'number', get: () => null, getCard: (c) => c.pas },
+    { label: 'DRI', kind: 'number', get: () => null, getCard: (c) => c.dri },
+    { label: 'DEF', kind: 'number', get: () => null, getCard: (c) => c.def },
+    { label: 'PHY', kind: 'number', get: () => null, getCard: (c) => c.phy },
+    { label: 'Position', kind: 'text', get: () => null, getCard: (c) => c.position },
+    {
+      label: 'Card type',
+      kind: 'text',
+      get: () => null,
+      getCard: (c) => `${CARD_TYPE_LABEL[c.cardType]}${c.provisional ? ' · provisional' : ''}`,
+    },
+  ],
+};
+
+const ALL_SECTIONS = [FUT_SECTION, ...SECTIONS];
+const ALL_ROWS = ALL_SECTIONS.flatMap((s) => s.rows);
 const SCORED_ROWS = ALL_ROWS.filter((r) => NUMERIC_KINDS.includes(r.kind));
 
 function formatCount(n: number): string {
@@ -178,6 +215,10 @@ export function Compare() {
   const [statsMap, setStatsMap] = useState<Record<number, CompareStats | null>>({});
   const [loadingIds, setLoadingIds] = useState<number[]>([]);
   const pendingRef = useRef<Set<number>>(new Set());
+  const [cardScope, setCardScope] = useState<CardScope>('season');
+  const [cardsByScope, setCardsByScope] = useState<
+    Partial<Record<CardScope, Record<number, UserCardWithProfile>>>
+  >({});
 
   useEffect(() => {
     let cancelled = false;
@@ -217,11 +258,34 @@ export function Compare() {
     }
   }, [selectedIds, statsMap]);
 
+  // FUT cards for the selected scope, one bulk request per scope - cached so
+  // toggling back and forth doesn't refetch.
+  useEffect(() => {
+    if (cardsByScope[cardScope] !== undefined) return;
+    let cancelled = false;
+    api
+      .getAllCards(cardScope)
+      .then((result) => {
+        if (cancelled) return;
+        const map: Record<number, UserCardWithProfile> = {};
+        for (const c of result.cards) map[c.user_id] = c;
+        setCardsByScope((m) => ({ ...m, [cardScope]: map }));
+      })
+      .catch(() => {
+        if (!cancelled) setCardsByScope((m) => ({ ...m, [cardScope]: {} }));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cardScope, cardsByScope]);
+
   const userById = useMemo(() => {
     const map = new Map<number, LeaderboardEntry>();
     for (const u of users) map.set(u.user_id, u);
     return map;
   }, [users]);
+
+  const scopeCards = cardsByScope[cardScope];
 
   const columns = useMemo<Column[]>(
     () =>
@@ -230,15 +294,20 @@ export function Compare() {
         user: userById.get(id) ?? null,
         stats: statsMap[id] === undefined ? undefined : statsMap[id],
         loading: loadingIds.includes(id),
+        card: scopeCards === undefined ? undefined : (scopeCards[id] ?? null),
+        cardLoading: scopeCards === undefined,
       })),
-    [selectedIds, userById, statsMap, loadingIds]
+    [selectedIds, userById, statsMap, loadingIds, scopeCards]
   );
 
   // Score: count how many numeric stats each user wins (ties count for all).
   const score = useMemo(() => {
     const counts = columns.map(() => 0);
     for (const row of SCORED_ROWS) {
-      const vals = columns.map((c) => (c.stats ? Number(row.get(c.stats)) : NaN));
+      const vals = columns.map((c) => {
+        if (row.getCard) return c.card ? Number(row.getCard(c.card)) : NaN;
+        return c.stats ? Number(row.get(c.stats)) : NaN;
+      });
       const max = Math.max(...vals);
       if (Number.isFinite(max) && max > 0) {
         vals.forEach((v, i) => {
@@ -300,8 +369,9 @@ export function Compare() {
           Back
         </button>
 
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <svg className="w-6 h-6 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
               <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5" />
               <line x1="13" y1="19" x2="19" y2="13" />
@@ -315,8 +385,36 @@ export function Compare() {
             Compare users
           </h1>
           <p className="text-sm text-slate-500 dark:text-zinc-500 mt-1">
-            Two or more users, every comparable stat from our database — daily, weekly, all-time. Green = best value for that stat.
+            Two or more users, every comparable stat from our database — daily, weekly,
+            all-time, plus FUT card ratings (relative to the whole group, not absolute).
+            Green = best value for that stat.
           </p>
+          </div>
+          <div
+            className="inline-flex rounded-lg bg-slate-100 dark:bg-zinc-800 p-0.5 shrink-0"
+            title="FUT card scope"
+          >
+            <button
+              onClick={() => setCardScope('season')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                cardScope === 'season'
+                  ? 'bg-white dark:bg-zinc-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                  : 'text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200'
+              }`}
+            >
+              This season
+            </button>
+            <button
+              onClick={() => setCardScope('career')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                cardScope === 'career'
+                  ? 'bg-white dark:bg-zinc-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                  : 'text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200'
+              }`}
+            >
+              Career
+            </button>
+          </div>
         </div>
 
         {usersError ? (
@@ -347,6 +445,35 @@ export function Compare() {
                                 className="absolute -top-3 left-0 right-0 h-[3px]"
                                 style={{ background: `hsl(${hue} 65% 50%)` }}
                               />
+                              <div className="mb-3 flex flex-col items-center">
+                                {col.cardLoading ? (
+                                  <div className="w-[160px] h-[224px] bg-slate-100 dark:bg-zinc-800 rounded-2xl animate-shimmer" />
+                                ) : col.card ? (
+                                  <>
+                                    <PlayerCard
+                                      card={col.card}
+                                      name={
+                                        col.user?.display_name ||
+                                        col.user?.username ||
+                                        col.card.display_name ||
+                                        col.card.username
+                                      }
+                                      photoUrl={col.user?.photo_url ?? col.card.photo_url}
+                                      width={160}
+                                    />
+                                    <p className="mt-1.5 text-[11px] font-medium text-slate-500 dark:text-zinc-500">
+                                      {CARD_TYPE_LABEL[col.card.cardType]} · {col.card.position}
+                                      {col.card.provisional && (
+                                        <span className="text-amber-600 dark:text-amber-400"> · provisional</span>
+                                      )}
+                                    </p>
+                                  </>
+                                ) : (
+                                  <div className="w-[160px] h-[224px] flex items-center justify-center rounded-2xl border border-dashed border-slate-300 dark:border-zinc-700 text-[11px] text-slate-400 dark:text-zinc-600 text-center px-4">
+                                    No card yet
+                                  </div>
+                                )}
+                              </div>
                               <div className="flex items-center gap-2">
                                 {col.user && <ColumnAvatar user={col.user} />}
                                 <div className="min-w-0">
@@ -404,6 +531,13 @@ export function Compare() {
                     </tr>
                   </thead>
                   <tbody>
+                    <SectionRows
+                      section={{
+                        ...FUT_SECTION,
+                        title: `FUT Card · ${cardScope === 'season' ? 'season' : 'career'}`,
+                      }}
+                      columns={columns}
+                    />
                     {SECTIONS.map((section) => (
                       <SectionRows key={section.title} section={section} columns={columns} />
                     ))}
@@ -483,7 +617,13 @@ function SectionRows({ section, columns }: { section: CompareSection; columns: C
       {section.rows.map((row) => {
         const isNumeric = NUMERIC_KINDS.includes(row.kind);
         const values = columns.map((col) =>
-          col.stats && isNumeric ? Number(row.get(col.stats)) : null
+          row.getCard
+            ? col.card
+              ? Number(row.getCard(col.card))
+              : null
+            : col.stats && isNumeric
+              ? Number(row.get(col.stats))
+              : null
         );
         const max = values.some((v) => v !== null)
           ? Math.max(...values.map((v) => v ?? -Infinity))
@@ -495,16 +635,17 @@ function SectionRows({ section, columns }: { section: CompareSection; columns: C
               {row.label}
             </td>
             {columns.map((col) => {
-              const loading = col.loading;
+              const loading = col.loading || (row.getCard ? col.cardLoading : false);
               let content: React.ReactNode;
               if (loading) {
                 content = (
                   <span className="inline-block w-12 h-3 bg-slate-200 dark:bg-zinc-800 rounded animate-pulse" />
                 );
-              } else if (!col.stats) {
+              } else if (row.getCard ? !col.card : !col.stats) {
                 content = '—';
               } else {
-                const value = row.get(col.stats);
+                const value =
+                  row.getCard && col.card ? row.getCard(col.card) : row.get(col.stats!);
                 const raw = isNumeric ? Number(value) : null;
                 const isBest = highlight && raw !== null && raw === max;
                 content = (
@@ -522,7 +663,15 @@ function SectionRows({ section, columns }: { section: CompareSection; columns: C
                 );
               }
               const isBestCell =
-                col.stats && !loading && highlight && Number(row.get(col.stats)) === max;
+                !loading &&
+                highlight &&
+                (row.getCard
+                  ? col.card
+                    ? Number(row.getCard(col.card)) === max
+                    : false
+                  : col.stats
+                    ? Number(row.get(col.stats)) === max
+                    : false);
               return (
                 <td
                   key={col.id}
