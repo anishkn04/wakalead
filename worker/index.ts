@@ -1,6 +1,6 @@
 import { Env } from './types';
 import { exchangeCodeForToken, fetchWakaTimeUser, fetchPhotoData } from './wakatime';
-import { createOrUpdateUser, getLeaderboard, getWeeklyData, getAllUsers, deleteUser, banUser, unbanUser, getUserById, getLastSyncTime, getUserTooltipStats, getCompareStats, upsertUserPhoto, getCurrentSeason, getSeasonHistory, resetSeason } from './database';
+import { createOrUpdateUser, getLeaderboard, getWeeklyData, getAllUsers, deleteUser, banUser, unbanUser, getUserById, getLastSyncTime, getUserTooltipStats, getCompareStats, upsertUserPhoto, getCurrentSeason, getSeasonHistory, resetSeason, getUserSeasonHistory } from './database';
 import { createSession, verifySession, deleteSession, extractSessionId } from './session';
 import { fetchDataForAllUsers, fetchTodayDataForUser, fetchWeekDataForUser, fetchTodayDataForAllUsers, fetchWeekDataForAllUsers, fetchPhotosForAllUsers } from './fetcher';
 import { getProfileData } from './profile';
@@ -294,6 +294,13 @@ export default {
           return errorResponse('User not found', 404);
         }
         return jsonResponse({ ...stats, photo_url: photoUrlFor(request, stats.user_id, stats.photo_url) }, 200, 0);
+      }
+
+      // Past-season archive stats for a single user - public, DB only
+      if (path.match(/^\/api\/user\/\d+\/seasons$/)) {
+        const userId = parseInt(path.split('/')[3]);
+        const seasons = await getUserSeasonHistory(env, userId);
+        return jsonResponse({ seasons }, 200, 0);
       }
 
       // Compare stats for a single user - DB only, daily/weekly/all-time buckets

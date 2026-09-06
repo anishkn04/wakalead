@@ -1170,3 +1170,73 @@ export async function resetSeason(env: Env, adminUserId: number): Promise<{ arch
   return { archivedSeason };
 }
 
+export interface UserSeasonStat {
+  season_number: number;
+  ended_at: number | null;
+  total_seconds: number;
+  ai_seconds: number;
+  human_seconds: number;
+  ai_lines: number;
+  human_lines: number;
+  days_active: number;
+  best_day: { date: string; seconds: number } | null;
+}
+
+/**
+ * One user's aggregated stats for each past (archived) season - what a
+ * "view past seasons" button on the profile page shows. Seasons the user
+ * had no activity in (e.g. they joined later) are omitted. Table names are
+ * built from `season_number`, which only ever comes from our own
+ * resetSeason()/getCurrentSeason() - never user input.
+ */
+export async function getUserSeasonHistory(env: Env, userId: number): Promise<UserSeasonStat[]> {
+  const currentSeason = await getCurrentSeason(env);
+  const resets = await getSeasonHistory(env);
+  const endedAtBySeason = new Map(resets.map((r) => [r.season_number, r.archived_at]));
+
+  const pastSeasons: number[] = [];
+  for (let n = currentSeason - 1; n >= 1; n--) pastSeasons.push(n);
+
+  const results = await Promise.allSettled(
+    pastSeasons.map(async (n): Promise<UserSeasonStat | null> => {
+      const totals = await env.DB.prepare(`
+        SELECT
+          COALESCE(SUM(total_seconds), 0) as total_seconds,
+          COALESCE(SUM(ai_seconds), 0) as ai_seconds,
+          COALESCE(SUM(human_seconds), 0) as human_seconds,
+          COALESCE(SUM(ai_lines), 0) as ai_lines,
+          COALESCE(SUM(human_lines), 0) as human_lines,
+          COUNT(*) as days_active
+        FROM daily_stats_season_${n}
+        WHERE user_id = ?
+      `).bind(userId).first<any>();
+
+      if (!totals || totals.days_active === 0) return null; // no activity this user had that season
+
+      const bestDayRow = await env.DB.prepare(`
+        SELECT date, total_seconds FROM daily_stats_season_${n}
+        WHERE user_id = ? ORDER BY total_seconds DESC LIMIT 1
+      `).bind(userId).first<{ date: string; total_seconds: number }>();
+
+      return {
+        season_number: n,
+        ended_at: endedAtBySeason.get(n) ?? null,
+        total_seconds: totals.total_seconds,
+        ai_seconds: totals.ai_seconds,
+        human_seconds: totals.human_seconds,
+        ai_lines: totals.ai_lines,
+        human_lines: totals.human_lines,
+        days_active: totals.days_active,
+        best_day: bestDayRow ? { date: bestDayRow.date, seconds: bestDayRow.total_seconds } : null,
+      };
+    })
+  );
+
+  const stats: UserSeasonStat[] = [];
+  for (const r of results) {
+    if (r.status === 'fulfilled' && r.value) stats.push(r.value);
+    else if (r.status === 'rejected') console.error('Error reading season archive:', r.reason);
+  }
+  return stats;
+}
+

@@ -74,6 +74,18 @@ export interface SeasonInfo {
   history: SeasonResetRecord[];
 }
 
+export interface UserSeasonStat {
+  season_number: number;
+  ended_at: number | null;
+  total_seconds: number;
+  ai_seconds: number;
+  human_seconds: number;
+  ai_lines: number;
+  human_lines: number;
+  days_active: number;
+  best_day: { date: string; seconds: number } | null;
+}
+
 /** One aggregated breakdown entry (name + total seconds + share %) */
 export interface TooltipStatBreakdown {
   name: string;
@@ -277,6 +289,11 @@ class ApiClient {
 
   async getCompareStats(userId: number): Promise<CompareStats> {
     return this.request<CompareStats>(`/user/${userId}/compare`);
+  }
+
+  /** That user's aggregated stats for each past (archived) season. */
+  async getUserSeasons(userId: number): Promise<{ seasons: UserSeasonStat[] }> {
+    return this.request<{ seasons: UserSeasonStat[] }>(`/user/${userId}/seasons`);
   }
 
   async getProfile(username: string): Promise<ProfileData> {
