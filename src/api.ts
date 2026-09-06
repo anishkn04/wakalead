@@ -74,6 +74,25 @@ export interface SeasonInfo {
   history: SeasonResetRecord[];
 }
 
+export type CardScope = 'season' | 'career';
+export type CardType = 'icon' | 'legend_hero' | 'white_icon' | 'featured_red' | 'base_gold' | 'base_silver';
+export type CardPosition = 'ST' | 'RW' | 'LW' | 'CAM' | 'CM' | 'CDM' | 'LM' | 'RM' | 'CB' | 'RB' | 'LB' | 'GK';
+
+export interface UserCard {
+  scope: CardScope;
+  pac: number;
+  sho: number;
+  pas: number;
+  dri: number;
+  def: number;
+  phy: number;
+  overall: number;
+  position: CardPosition;
+  cardType: CardType;
+  provisional: boolean;
+  days_active: number;
+}
+
 export interface UserSeasonStat {
   season_number: number;
   ended_at: number | null;
@@ -289,6 +308,11 @@ class ApiClient {
 
   async getCompareStats(userId: number): Promise<CompareStats> {
     return this.request<CompareStats>(`/user/${userId}/compare`);
+  }
+
+  /** FUT-style player card, percentile-ranked against every other user. */
+  async getUserCard(userId: number, scope: CardScope = 'season'): Promise<UserCard> {
+    return this.request<UserCard>(`/user/${userId}/card?scope=${scope}`);
   }
 
   /** That user's aggregated stats for each past (archived) season. */

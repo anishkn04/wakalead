@@ -1240,3 +1240,336 @@ export async function getUserSeasonHistory(env: Env, userId: number): Promise<Us
   return stats;
 }
 
+/**
+ * FUT-style player cards: 6 attributes (PAC/SHO/PAS/DRI/DEF/PHY), each
+ * scored by PERCENTILE RANK against every other user, never an absolute
+ * bar - so card quality reflects standing within the group, not whether
+ * anyone hit some fixed number of hours. See docs/FUT_CARD_DESIGN.md for
+ * the full design rationale, gaming-vector analysis, and decision log.
+ *
+ * PAC/SHO deliberately use human_seconds/human_lines (not totals) so
+ * someone can't inflate their card by leaving an AI agent running for a
+ * long "session" without doing the work themselves - ai_lines still count
+ * toward SHO, just discounted. PAS/DRI/DEF/PHY are diversity counts or
+ * ratios by nature, already immune to that kind of padding.
+ */
+export type CardScope = 'season' | 'career';
+export type CardType = 'icon' | 'legend_hero' | 'white_icon' | 'featured_red' | 'base_gold' | 'base_silver';
+export type CardPosition = 'ST' | 'RW' | 'LW' | 'CAM' | 'CM' | 'CDM' | 'LM' | 'RM' | 'CB' | 'RB' | 'LB' | 'GK';
+
+interface RawUserCardMetrics {
+  human_seconds: number;
+  output_score: number; // human_lines + 0.7 * ai_lines
+  days_active: number;  // days with >= CARD_ACTIVE_SECONDS of total_seconds
+  days_tracked: number; // days with any synced row at all
+  longest_streak: number;
+  distinct_projects: number;
+  distinct_languages: number;
+  distinct_editors: number;
+  distinct_os: number;
+}
+
+export interface UserCardAttributes {
+  pac: number;
+  sho: number;
+  pas: number;
+  dri: number;
+  def: number;
+  phy: number;
+  overall: number;
+  position: CardPosition;
+  cardType: CardType;
+  provisional: boolean;
+  days_active: number;
+}
+
+const CARD_RATING_FLOOR = 55; // worst-in-cohort attribute still reads as solidly average
+const CARD_MIN_DAYS_ACTIVE = 7; // below this, personally provisional - not enough data for a meaningful percentile
+const CARD_MIN_COHORT = 4; // below this many users with any data, percentile ranking is close to meaningless for everyone
+const CARD_ACTIVE_SECONDS = 40 * 60; // a day only counts toward DEF/PHY at 40+ active minutes, not just nonzero
+const FEATURED_STREAK_THRESHOLD = 5; // day_streak or week_streak > 5 triggers Featured Red
+
+/**
+ * Fractional percentile rank in [0, 1] for each value in `values`, tied
+ * values get the same (averaged) rank. A single-user cohort degenerates to
+ * everyone at 1.0 - inherent to relative ranking with nothing to compare to
+ * (guarded against separately via CARD_MIN_COHORT).
+ */
+function percentileRanks(values: number[]): number[] {
+  const n = values.length;
+  if (n <= 1) return values.map(() => 1);
+  const order = values.map((_, i) => i).sort((a, b) => values[a] - values[b]);
+  const ranks = new Array(n).fill(0);
+  let i = 0;
+  while (i < n) {
+    let j = i;
+    while (j + 1 < n && values[order[j + 1]] === values[order[i]]) j++;
+    const avgPosition = (i + j) / 2;
+    for (let k = i; k <= j; k++) ranks[order[k]] = avgPosition;
+    i = j + 1;
+  }
+  return ranks.map((r) => r / (n - 1));
+}
+
+function rescale(percentile: number): number {
+  return Math.round(CARD_RATING_FLOOR + percentile * (99 - CARD_RATING_FLOOR));
+}
+
+/** Longest run of calendar-consecutive dates in a sorted, deduplicated date array. */
+function longestConsecutiveRun(sortedDates: string[]): number {
+  let longest = 0, run = 0, prev: string | null = null;
+  for (const d of sortedDates) {
+    run = prev && d === shiftDate(prev, 1) ? run + 1 : 1;
+    if (run > longest) longest = run;
+    prev = d;
+  }
+  return longest;
+}
+
+/**
+ * Table names to read for this scope: just the live table for 'season'
+ * (the season-start clamp already guarantees it holds nothing from before
+ * the current season), or the live table plus every archived "_season_N"
+ * table for 'career'.
+ *
+ * Queried one table at a time and merged in JS, rather than one big
+ * UNION ALL - this D1/SQLite build caps compound SELECTs at 5 terms
+ * (verified: 5 works, 6 throws "too many terms in compound SELECT"), which
+ * a UNION-per-season approach would blow past after only a handful of
+ * season resets. Separate queries scale to any number of seasons.
+ */
+async function getScopedTableNames(env: Env, scope: CardScope, baseTable: string): Promise<string[]> {
+  if (scope === 'season') return [baseTable];
+  const currentSeason = await getCurrentSeason(env);
+  const names = [baseTable];
+  for (let n = 1; n < currentSeason; n++) names.push(`${baseTable}_season_${n}`);
+  return names;
+}
+
+async function getCardMetricsForAllUsers(env: Env, scope: CardScope): Promise<Map<number, RawUserCardMetrics>> {
+  const [dailyTables, breakdownTables] = await Promise.all([
+    getScopedTableNames(env, scope, 'daily_stats'),
+    getScopedTableNames(env, scope, 'user_stat_breakdown'),
+  ]);
+
+  const [dailyResults, breakdownResults] = await Promise.all([
+    Promise.all(dailyTables.map((t) =>
+      env.DB.prepare(`SELECT user_id, date, total_seconds, human_seconds, ai_lines, human_lines FROM ${t}`).all<{
+        user_id: number; date: string; total_seconds: number; human_seconds: number; ai_lines: number; human_lines: number;
+      }>()
+    )),
+    Promise.all(breakdownTables.map((t) =>
+      env.DB.prepare(`SELECT user_id, kind, name FROM ${t} WHERE kind IN ('project','language','editor','os')`).all<{
+        user_id: number; kind: string; name: string;
+      }>()
+    )),
+  ]);
+
+  const dailyRows = { results: dailyResults.flatMap((r) => r.results) };
+  const breakdownRows = { results: breakdownResults.flatMap((r) => r.results) };
+
+  const byUser = new Map<number, RawUserCardMetrics>();
+  const ensure = (userId: number): RawUserCardMetrics => {
+    let m = byUser.get(userId);
+    if (!m) {
+      m = {
+        human_seconds: 0, output_score: 0, days_active: 0, days_tracked: 0, longest_streak: 0,
+        distinct_projects: 0, distinct_languages: 0, distinct_editors: 0, distinct_os: 0,
+      };
+      byUser.set(userId, m);
+    }
+    return m;
+  };
+
+  const activeDatesByUser = new Map<number, string[]>();
+  for (const row of dailyRows.results) {
+    const m = ensure(row.user_id);
+    m.human_seconds += row.human_seconds || 0;
+    m.output_score += (row.human_lines || 0) + 0.7 * (row.ai_lines || 0);
+    m.days_tracked += 1;
+    if ((row.total_seconds || 0) >= CARD_ACTIVE_SECONDS) {
+      m.days_active += 1;
+      const dates = activeDatesByUser.get(row.user_id) ?? [];
+      dates.push(row.date);
+      activeDatesByUser.set(row.user_id, dates);
+    }
+  }
+  for (const [userId, dates] of activeDatesByUser) {
+    ensure(userId).longest_streak = longestConsecutiveRun([...new Set(dates)].sort());
+  }
+
+  const distinctSets = new Map<number, Record<'project' | 'language' | 'editor' | 'os', Set<string>>>();
+  for (const row of breakdownRows.results) {
+    const kind = row.kind as 'project' | 'language' | 'editor' | 'os';
+    const sets = distinctSets.get(row.user_id) ?? { project: new Set(), language: new Set(), editor: new Set(), os: new Set() };
+    sets[kind]?.add(row.name);
+    distinctSets.set(row.user_id, sets);
+  }
+  for (const [userId, sets] of distinctSets) {
+    const m = ensure(userId);
+    m.distinct_projects = sets.project.size;
+    m.distinct_languages = sets.language.size;
+    m.distinct_editors = sets.editor.size;
+    m.distinct_os = sets.os.size;
+  }
+
+  return byUser;
+}
+
+/**
+ * Real FC position codes, assigned by weighted blend of all 6 attributes
+ * (matching how FIFA/FC itself computes position suitability), not just
+ * whichever single stat is highest. Mirror-image pairs (RW/LW, LM/RM,
+ * RB/LB) always tie exactly on our data, so ties are broken by a
+ * deterministic hash of the user id - consistent per person, purely
+ * cosmetic, not a real signal.
+ */
+const POSITION_WEIGHTS: Record<Exclude<CardPosition, 'GK'>, Partial<Record<'pac' | 'sho' | 'pas' | 'dri' | 'def' | 'phy', number>>> = {
+  ST: { sho: 0.45, pac: 0.25, dri: 0.15, phy: 0.10, pas: 0.05 },
+  RW: { pac: 0.35, dri: 0.30, sho: 0.20, pas: 0.15 },
+  LW: { pac: 0.35, dri: 0.30, sho: 0.20, pas: 0.15 },
+  CAM: { pas: 0.40, dri: 0.30, sho: 0.20, pac: 0.10 },
+  CM: { pas: 0.30, phy: 0.25, dri: 0.20, def: 0.15, pac: 0.10 },
+  CDM: { def: 0.40, phy: 0.30, pas: 0.20, dri: 0.10 },
+  LM: { pac: 0.30, pas: 0.30, dri: 0.25, def: 0.15 },
+  RM: { pac: 0.30, pas: 0.30, dri: 0.25, def: 0.15 },
+  CB: { def: 0.55, phy: 0.35, pac: 0.10 },
+  RB: { def: 0.35, pac: 0.30, phy: 0.20, pas: 0.15 },
+  LB: { def: 0.35, pac: 0.30, phy: 0.20, pas: 0.15 },
+};
+const LEFT_RIGHT_PAIRS: Array<[Exclude<CardPosition, 'GK'>, Exclude<CardPosition, 'GK'>]> = [['RW', 'LW'], ['RM', 'LM'], ['RB', 'LB']];
+
+function hashUserId(userId: number): number {
+  let h = 0;
+  const s = String(userId);
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+function assignPosition(attrs: Pick<UserCardAttributes, 'pac' | 'sho' | 'pas' | 'dri' | 'def' | 'phy'>, userId: number): Exclude<CardPosition, 'GK'> {
+  const scores = (Object.keys(POSITION_WEIGHTS) as Array<Exclude<CardPosition, 'GK'>>).map((pos) => {
+    const weights = POSITION_WEIGHTS[pos];
+    let score = 0;
+    for (const key of Object.keys(weights) as Array<keyof typeof weights>) {
+      score += (attrs[key] ?? 0) * (weights[key] ?? 0);
+    }
+    return { pos, score };
+  });
+
+  // Collapse each left/right pair to a single tied score entry, side picked by hash.
+  const collapsed = scores.filter(({ pos }) => !LEFT_RIGHT_PAIRS.some(([, left]) => left === pos));
+  let best = collapsed[0];
+  for (const s of collapsed) if (s.score > best.score) best = s;
+
+  const pair = LEFT_RIGHT_PAIRS.find(([right]) => right === best.pos);
+  if (pair) {
+    const [right, left] = pair;
+    return hashUserId(userId) % 2 === 0 ? right : left;
+  }
+  return best.pos;
+}
+
+/** Per-user count of past seasons they were champion of (most rank=1 days, metric='total', period='day'). */
+async function getSeasonChampionCounts(env: Env): Promise<Map<number, number>> {
+  const currentSeason = await getCurrentSeason(env);
+  const counts = new Map<number, number>();
+  for (let n = 1; n < currentSeason; n++) {
+    try {
+      const champion = await env.DB.prepare(`
+        SELECT user_id, COUNT(*) as rank1_days
+        FROM leaderboard_history_season_${n}
+        WHERE period = 'day' AND metric = 'total' AND rank = 1 AND value > 0
+        GROUP BY user_id
+        ORDER BY rank1_days DESC
+        LIMIT 1
+      `).first<{ user_id: number; rank1_days: number }>();
+      if (champion) counts.set(champion.user_id, (counts.get(champion.user_id) ?? 0) + 1);
+    } catch (error) {
+      console.error(`Error computing champion for season ${n}:`, error);
+    }
+  }
+  return counts;
+}
+
+/** Computes every user's card in one pass - percentiles need the whole cohort anyway. */
+export async function computeCardsForAllUsers(env: Env, scope: CardScope, today: string): Promise<Map<number, UserCardAttributes>> {
+  const raw = await getCardMetricsForAllUsers(env, scope);
+  const userIds = [...raw.keys()];
+
+  const dimensions: Array<{ key: 'pac' | 'sho' | 'pas' | 'dri' | 'def' | 'phy'; extract: (m: RawUserCardMetrics) => number }> = [
+    { key: 'pac', extract: (m) => m.human_seconds },
+    { key: 'sho', extract: (m) => m.output_score },
+    { key: 'pas', extract: (m) => m.distinct_projects + m.distinct_languages },
+    { key: 'dri', extract: (m) => m.distinct_editors + m.distinct_os },
+    { key: 'def', extract: (m) => (m.days_tracked > 0 ? m.days_active / m.days_tracked : 0) },
+    { key: 'phy', extract: (m) => m.longest_streak },
+  ];
+
+  const ratingsByUser = new Map<number, Record<string, number>>();
+  for (const dim of dimensions) {
+    const values = userIds.map((id) => dim.extract(raw.get(id)!));
+    const percentiles = percentileRanks(values);
+    userIds.forEach((id, i) => {
+      const r = ratingsByUser.get(id) ?? {};
+      r[dim.key] = rescale(percentiles[i]);
+      ratingsByUser.set(id, r);
+    });
+  }
+
+  const overallByUser = new Map<number, number>();
+  for (const id of userIds) {
+    const r = ratingsByUser.get(id)!;
+    overallByUser.set(id, Math.round((r.pac + r.sho + r.pas + r.dri + r.def + r.phy) / 6));
+  }
+
+  const [championCounts, rankOneStats] = await Promise.all([
+    getSeasonChampionCounts(env),
+    getRankOneStats(env, 'total', today),
+  ]);
+
+  const lowestOverallUserId = userIds.length > 0
+    ? userIds.reduce((worst, id) => (overallByUser.get(id)! < overallByUser.get(worst)! ? id : worst), userIds[0])
+    : null;
+  const highestOverallUserId = userIds.length > 0
+    ? userIds.reduce((best, id) => (overallByUser.get(id)! > overallByUser.get(best)! ? id : best), userIds[0])
+    : null;
+
+  const cohortTooSmall = userIds.length < CARD_MIN_COHORT;
+
+  const cards = new Map<number, UserCardAttributes>();
+  for (const id of userIds) {
+    const r = ratingsByUser.get(id)!;
+    const overall = overallByUser.get(id)!;
+    const attrs = { pac: r.pac, sho: r.sho, pas: r.pas, dri: r.dri, def: r.def, phy: r.phy };
+
+    const position: CardPosition = id === lowestOverallUserId ? 'GK' : assignPosition(attrs, id);
+
+    let cardType: CardType;
+    const allSixElite = attrs.pac >= 90 && attrs.sho >= 90 && attrs.pas >= 90 && attrs.dri >= 90 && attrs.def >= 90 && attrs.phy >= 90;
+    const streak = rankOneStats.get(id);
+    const isHot = !!streak && (streak.day_streak > FEATURED_STREAK_THRESHOLD || streak.week_streak > FEATURED_STREAK_THRESHOLD);
+
+    if ((championCounts.get(id) ?? 0) >= 2) cardType = 'icon';
+    else if (allSixElite) cardType = 'white_icon';
+    else if (id === highestOverallUserId) cardType = 'legend_hero';
+    else if (isHot) cardType = 'featured_red';
+    else if (overall >= 75) cardType = 'base_gold';
+    else cardType = 'base_silver';
+
+    cards.set(id, {
+      ...attrs,
+      overall,
+      position,
+      cardType,
+      provisional: cohortTooSmall || raw.get(id)!.days_active < CARD_MIN_DAYS_ACTIVE,
+      days_active: raw.get(id)!.days_active,
+    });
+  }
+  return cards;
+}
+
+export async function getUserCard(env: Env, userId: number, scope: CardScope, today: string): Promise<UserCardAttributes | null> {
+  const cards = await computeCardsForAllUsers(env, scope, today);
+  return cards.get(userId) ?? null;
+}
+

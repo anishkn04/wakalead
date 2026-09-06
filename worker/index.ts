@@ -1,6 +1,6 @@
 import { Env } from './types';
 import { exchangeCodeForToken, fetchWakaTimeUser, fetchPhotoData } from './wakatime';
-import { createOrUpdateUser, getLeaderboard, getWeeklyData, getAllUsers, deleteUser, banUser, unbanUser, getUserById, getLastSyncTime, getUserTooltipStats, getCompareStats, upsertUserPhoto, getCurrentSeason, getSeasonHistory, resetSeason, getUserSeasonHistory } from './database';
+import { createOrUpdateUser, getLeaderboard, getWeeklyData, getAllUsers, deleteUser, banUser, unbanUser, getUserById, getLastSyncTime, getUserTooltipStats, getCompareStats, upsertUserPhoto, getCurrentSeason, getSeasonHistory, resetSeason, getUserSeasonHistory, getUserCard, CardScope } from './database';
 import { createSession, verifySession, deleteSession, extractSessionId } from './session';
 import { fetchDataForAllUsers, fetchTodayDataForUser, fetchWeekDataForUser, fetchTodayDataForAllUsers, fetchWeekDataForAllUsers, fetchPhotosForAllUsers } from './fetcher';
 import { getProfileData } from './profile';
@@ -301,6 +301,20 @@ export default {
         const userId = parseInt(path.split('/')[3]);
         const seasons = await getUserSeasonHistory(env, userId);
         return jsonResponse({ seasons }, 200, 0);
+      }
+
+      // FUT-style player card for a single user - public, DB only.
+      // scope=season (default) or scope=career.
+      if (path.match(/^\/api\/user\/\d+\/card$/)) {
+        const userId = parseInt(path.split('/')[3]);
+        const scopeParam = url.searchParams.get('scope');
+        const scope: CardScope = scopeParam === 'career' ? 'career' : 'season';
+        const today = formatDate(getNepalDate());
+        const card = await getUserCard(env, userId, scope, today);
+        if (!card) {
+          return errorResponse('No card data for this user yet', 404);
+        }
+        return jsonResponse({ scope, ...card }, 200, 0);
       }
 
       // Compare stats for a single user - DB only, daily/weekly/all-time buckets
