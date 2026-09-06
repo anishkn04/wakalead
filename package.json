@@ -12,9 +12,7 @@
     "worker:deploy": "wrangler deploy",
     "db:migrate": "wrangler d1 execute wakalead --file=./schema.sql && wrangler d1 execute wakalead --file=./migrations/add_user_photos.sql",
     "db:migrate:local": "wrangler d1 execute wakalead --local --file=./schema.sql && wrangler d1 execute wakalead --local --file=./migrations/add_user_stats.sql && wrangler d1 execute wakalead --local --file=./migrations/add_user_tooltip.sql && wrangler d1 execute wakalead --local --file=./migrations/add_user_photos.sql",
-    "db:migrate:remote": "wrangler d1 execute wakalead --remote --file=./schema.sql && wrangler d1 execute wakalead --remote --file=./migrations/add_user_stats.sql && wrangler d1 execute wakalead --remote --file=./migrations/add_user_tooltip.sql && wrangler d1 execute wakalead --remote --file=./migrations/add_user_photos.sql",
-    "db:leaderboard:local": "wrangler d1 execute wakalead --local --file=./migrations/add_leaderboard_history.sql && wrangler d1 execute wakalead --local --file=./migrations/backfill_leaderboard_history.sql && wrangler d1 execute wakalead --local --file=./migrations/drop_daily_leaderboard.sql",
-    "db:leaderboard:remote": "wrangler d1 execute wakalead --remote --file=./migrations/add_leaderboard_history.sql && wrangler d1 execute wakalead --remote --file=./migrations/backfill_leaderboard_history.sql && wrangler d1 execute wakalead --remote --file=./migrations/drop_daily_leaderboard.sql"
+    "db:migrate:remote": "wrangler d1 execute wakalead --remote --file=./schema.sql && wrangler d1 execute wakalead --remote --file=./migrations/add_user_stats.sql && wrangler d1 execute wakalead --remote --file=./migrations/add_user_tooltip.sql && wrangler d1 execute wakalead --remote --file=./migrations/add_user_photos.sql"
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",
