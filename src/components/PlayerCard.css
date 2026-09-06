@@ -21,6 +21,7 @@
   --meta-left: 9%;
   --name-bottom: 32%;
   --stats-bottom: 15%;
+  --player-gap: 3.5em;      /* space between the photo and the name line */
 
   /* ---- skin defaults (overridden per card) ---- */
   --frame-1: #dcdcdc;
@@ -111,7 +112,7 @@
   right: 0;
   top: 12%; /* clears the silhouette's top edge (max 9.8% at centre) */
   /* tied to the name band so the image can never overlap it */
-  bottom: calc(var(--name-bottom) + 2em);
+  bottom: calc(var(--name-bottom) + var(--player-gap));
   overflow: hidden; /* the divider crops the figure, as on the reference */
 }
 .pitch-card .card-player img {
