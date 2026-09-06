@@ -24,8 +24,8 @@ The specific worry: someone leaves an editor (or an AI agent) open for a
 long stretch without doing much themselves, racking up `total_seconds`
 without real output. Fix: the two time/output-based attributes use the
 **human-specific** columns we already separate out (`human_seconds`,
-`human_lines`), not totals - so idle-ish time doesn't inflate PAC at all.
-AI-driven lines still count toward SHO (output), at a discount relative to
+`human_lines`), not totals - so idle-ish time doesn't inflate SHO at all.
+AI-driven lines still count toward PAC (output), at a discount relative to
 human_lines - directing an AI well is a real skill, just not weighted
 quite as high as writing the line yourself.
 
@@ -38,8 +38,8 @@ place, so they need no special handling.
 
 | Stat | Formula (before percentile ranking) | Rationale |
 |---|---|---|
-| **PAC** | `SUM(human_seconds)` | Real active time only |
-| **SHO** | `SUM(human_lines) + 0.7 * SUM(ai_lines)` | Real output weighted highest; AI-assisted lines count for most of a human line (confirmed) |
+| **PAC** | `SUM(human_lines) + 0.7 * SUM(ai_lines)` | Real output weighted highest; AI-assisted lines count for most of a human line (confirmed) |
+| **SHO** | `SUM(human_seconds)` | Real active time only |
 | **PAS** | `distinct(project) + distinct(language)` | Breadth across contexts |
 | **DRI** | `distinct(editor) + distinct(os)` | Tool versatility |
 | **DEF** | `days_active / days_tracked` | Consistency ratio - can't be padded by one big session |
@@ -226,7 +226,7 @@ our own formulas (things we could actually tighten).
   (meeting, coffee, browsing) and WakaTime counts the *entire gap* as
   active coding time. Because this still comes through as a real,
   non-AI-category heartbeat, it inflates `human_seconds` - exactly the
-  field PAC/SHO were built around specifically to avoid AI-padding. The
+  field SHO was built around specifically to avoid AI-padding. The
   human/AI split defends against "let AI do the work," not "barely touch
   the keyboard for a long time." We only ever see WakaTime's
   pre-aggregated `summaries` duration, not raw heartbeats, so we can't see
@@ -262,7 +262,7 @@ our own formulas (things we could actually tighten).
   inflate distinct-project/language/editor/OS counts - the metric can't
   tell "genuinely worked across five real projects" from "made five empty
   files to pad the number."
-- **SHO (line count) inherits the general "lines changed" gaming problem**
+- **PAC (line count) inherits the general "lines changed" gaming problem**
   every LOC-based metric has - large low-value diffs (reformatting,
   duplicated boilerplate, mass whitespace changes, or straight
   copy-pasted code with real understanding) count the same as meaningful
@@ -310,7 +310,7 @@ vector available.
 ## Open questions before implementation resumes
 
 1. ~~Confirm the attribute formulas and the AI-line discount weight~~ -
-   **decided: 0.7x** (`human_lines + 0.7 * ai_lines`).
+   **decided: 0.7x** (`human_lines + 0.7 * ai_lines`, feeds PAC).
 2. ~~Confirm the floor and card assignment~~ - **decided: floor = 55**;
    superseded by the full 6-card cascade above (Icon/White Icon/
    Legend-Hero/Featured Red/Base Gold/Base Silver) rather than a simple

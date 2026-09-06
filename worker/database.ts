@@ -1247,10 +1247,10 @@ export async function getUserSeasonHistory(env: Env, userId: number): Promise<Us
  * anyone hit some fixed number of hours. See docs/FUT_CARD_DESIGN.md for
  * the full design rationale, gaming-vector analysis, and decision log.
  *
- * PAC/SHO deliberately use human_seconds/human_lines (not totals) so
+ * PAC/SHO deliberately use human_lines/human_seconds (not totals) so
  * someone can't inflate their card by leaving an AI agent running for a
  * long "session" without doing the work themselves - ai_lines still count
- * toward SHO, just discounted. PAS/DRI/DEF/PHY are diversity counts or
+ * toward PAC, just discounted. PAS/DRI/DEF/PHY are diversity counts or
  * ratios by nature, already immune to that kind of padding.
  */
 export type CardScope = 'season' | 'career';
@@ -1497,8 +1497,8 @@ export async function computeCardsForAllUsers(env: Env, scope: CardScope, today:
   const userIds = [...raw.keys()];
 
   const dimensions: Array<{ key: 'pac' | 'sho' | 'pas' | 'dri' | 'def' | 'phy'; extract: (m: RawUserCardMetrics) => number }> = [
-    { key: 'pac', extract: (m) => m.human_seconds },
-    { key: 'sho', extract: (m) => m.output_score },
+    { key: 'pac', extract: (m) => m.output_score },
+    { key: 'sho', extract: (m) => m.human_seconds },
     { key: 'pas', extract: (m) => m.distinct_projects + m.distinct_languages },
     { key: 'dri', extract: (m) => m.distinct_editors + m.distinct_os },
     { key: 'def', extract: (m) => (m.days_tracked > 0 ? m.days_active / m.days_tracked : 0) },

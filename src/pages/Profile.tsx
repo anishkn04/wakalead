@@ -473,11 +473,11 @@ export function Profile() {
                   Every number is <strong>relative to everyone else</strong>, not an absolute
                   bar - each of the 6 stats is your percentile rank against the whole group,
                   rescaled so even last place still looks respectable. PAC and SHO are based
-                  on your own hands-on-keyboard time and typed lines (AI-assisted lines count
+                  on your own typed lines and hands-on-keyboard time (AI-assisted lines count
                   for less), so leaving a tool running idle doesn't inflate your card.
                 </p>
                 <p>
-                  <strong>PAC</strong> active coding time · <strong>SHO</strong> lines written ·{' '}
+                  <strong>PAC</strong> lines written · <strong>SHO</strong> active coding time ·{' '}
                   <strong>PAS</strong> breadth of projects/languages · <strong>DRI</strong> tool
                   versatility · <strong>DEF</strong> consistency (active days ratio) ·{' '}
                   <strong>PHY</strong> longest streak.
