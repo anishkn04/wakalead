@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { api, ProfileData, ProfileDailyRow, UserSeasonStat, formatDuration, formatLines, formatDate, formatRelativeTime } from '../api';
+import { api, ProfileData, ProfileDailyRow, UserSeasonStat, UserCard, CardScope, formatDuration, formatLines, formatDate, formatRelativeTime } from '../api';
 import { Header } from '../components/Header';
 import { hashHue } from '../components/StatsPanel';
 import { getLanguageIcon, languageHue } from '../languageIcons';
 import { getEditorIcon, getOsIcon } from '../stackIcons';
+import { PlayerCard, CARD_TYPE_LABEL } from '../components/PlayerCard';
 
 type BreakdownItem = { name: string; seconds?: number; percent?: number };
 
@@ -232,6 +233,10 @@ export function Profile() {
   const [seasonsOpen, setSeasonsOpen] = useState(false);
   const [seasons, setSeasons] = useState<UserSeasonStat[] | null>(null);
   const [seasonsLoading, setSeasonsLoading] = useState(false);
+  const [cardScope, setCardScope] = useState<CardScope>('season');
+  const [card, setCard] = useState<UserCard | null>(null);
+  const [cardLoading, setCardLoading] = useState(true);
+  const [cardError, setCardError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -256,6 +261,27 @@ export function Profile() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cleanUsername]);
+
+  useEffect(() => {
+    if (!data?.user.user_id) return;
+    let cancelled = false;
+    setCardLoading(true);
+    setCardError(null);
+    api
+      .getUserCard(data.user.user_id, cardScope)
+      .then((c) => {
+        if (!cancelled) setCard(c);
+      })
+      .catch((err: Error) => {
+        if (!cancelled) setCardError(err.message || 'Could not load card');
+      })
+      .finally(() => {
+        if (!cancelled) setCardLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [data?.user.user_id, cardScope]);
 
   const hue = useMemo(() => hashHue(cleanUsername), [cleanUsername]);
 
@@ -387,6 +413,89 @@ export function Profile() {
                 </div>
               </div>
             </section>
+
+            {/* Player card */}
+            <Section title="Player card" subtitle="Percentile-ranked against every other user - see the legend below for how it's built">
+              <div className="flex items-center justify-center gap-2 mb-6">
+                <button
+                  onClick={() => setCardScope('season')}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                    cardScope === 'season'
+                      ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900'
+                      : 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-700'
+                  }`}
+                >
+                  This season
+                </button>
+                <button
+                  onClick={() => setCardScope('career')}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                    cardScope === 'career'
+                      ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900'
+                      : 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-700'
+                  }`}
+                >
+                  Career
+                </button>
+              </div>
+
+              {cardLoading && (
+                <div className="flex justify-center">
+                  <div className="w-[300px] h-[420px] bg-slate-100 dark:bg-zinc-800 rounded-2xl animate-shimmer" />
+                </div>
+              )}
+
+              {!cardLoading && cardError && (
+                <p className="text-center text-sm text-slate-400 dark:text-zinc-600">
+                  Not enough data yet for a {cardScope} card.
+                </p>
+              )}
+
+              {!cardLoading && !cardError && card && (
+                <div className="flex flex-col items-center gap-3">
+                  <PlayerCard card={card} name={name} photoUrl={data.user.photo_url} />
+                  <div className="text-center">
+                    <p className="text-sm font-medium text-slate-700 dark:text-zinc-300">
+                      {CARD_TYPE_LABEL[card.cardType]} · {card.position}
+                    </p>
+                    {card.provisional && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                        Provisional - not enough {cardScope} data yet for a fully meaningful rating
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-8 pt-6 border-t border-slate-100 dark:border-zinc-800 text-xs text-slate-500 dark:text-zinc-500 space-y-2 max-w-xl mx-auto">
+                <p className="font-semibold text-slate-600 dark:text-zinc-400">How this card is made</p>
+                <p>
+                  Every number is <strong>relative to everyone else</strong>, not an absolute
+                  bar - each of the 6 stats is your percentile rank against the whole group,
+                  rescaled so even last place still looks respectable. PAC and SHO are based
+                  on your own hands-on-keyboard time and typed lines (AI-assisted lines count
+                  for less), so leaving a tool running idle doesn't inflate your card.
+                </p>
+                <p>
+                  <strong>PAC</strong> active coding time · <strong>SHO</strong> lines written ·{' '}
+                  <strong>PAS</strong> breadth of projects/languages · <strong>DRI</strong> tool
+                  versatility · <strong>DEF</strong> consistency (active days ratio) ·{' '}
+                  <strong>PHY</strong> longest streak.
+                </p>
+                <p>
+                  <strong>This season</strong> resets each time an admin starts a new season.{' '}
+                  <strong>Career</strong> spans everything you've ever synced. Cards below{' '}
+                  {7} active days (or in a group smaller than 4 people) are marked provisional
+                  - not enough data for a meaningful percentile yet.
+                </p>
+                <p>
+                  Card type: <strong>Icon</strong> = champion of 2+ past seasons ·{' '}
+                  <strong>White Icon</strong> = every stat 90+ · <strong>Hero</strong> = #1
+                  overall right now · <strong>Featured</strong> = an active streak over 5 ·{' '}
+                  <strong>Gold/Silver</strong> = everyone else, by overall rating.
+                </p>
+              </div>
+            </Section>
 
             {/* Lifetime stat cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
