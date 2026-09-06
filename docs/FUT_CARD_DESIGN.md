@@ -81,6 +81,9 @@ For each of the 6 attributes independently:
    solidly average, not "broken," the same way FIFA rarely rates anyone
    below the low 40s (we're a bit more generous, since a small team's
    "worst" performer is often still putting in real, legitimate work).
+   **PHY uses its own higher floor of 65** instead of 55 - applied after
+   the streak/project blend, so PHY specifically never drops below 65
+   regardless of percentile.
 
 `overall` = simple average of the 6 already-rescaled attribute ratings,
 rounded. (Normalizing each attribute to the 0-99 band *first*, then

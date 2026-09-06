@@ -34,6 +34,9 @@ rescaled:
 rating = round(55 + percentile * (99 - 55))
 ```
 
+**PHY uses floor 65 instead of 55** (applied after its streak/project
+blend) - never drops below 65 regardless of percentile.
+
 **Overall** = average of the 6 already-rescaled ratings, rounded.
 
 ## Card type (priority cascade, first match wins)
