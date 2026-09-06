@@ -827,11 +827,14 @@ function mondayOf(dateStr: string): string {
 
 /**
  * Count consecutive ISO weeks in `won` (Set of Monday date keys) ending at
- * `today`. The current (possibly incomplete) week is the live proxy for its
- * week-end.
+ * `today`. Mirrors `consecutiveCount`'s same-week grace period: if the
+ * current week has no representative snapshot yet (`hasRep`), fall back to
+ * last week so an active streak doesn't flicker to 0 before this week's
+ * first sync lands.
  */
-function consecutiveWeeks(won: Set<string>, today: string): number {
-  let cursor = mondayOf(today);
+function consecutiveWeeks(won: Set<string>, hasRep: Set<string>, today: string): number {
+  const thisWeek = mondayOf(today);
+  let cursor = hasRep.has(thisWeek) ? thisWeek : shiftDate(thisWeek, -7);
   let count = 0;
   while (won.has(cursor)) {
     count += 1;
@@ -892,8 +895,18 @@ export async function getRankOneStats(
         WHERE period = 'week' AND metric = ?
       )
       WHERE rn = 1 AND rank = 1 AND value > 0
+        -- Only trust this week's representative if it's the still-in-progress
+        -- current week (any snapshot is a fine live proxy) or it actually
+        -- closed out on that week's Sunday (the only day whose trailing
+        -- 7-day window exactly equals a Mon-Sun calendar week). A week whose
+        -- Sunday sync was missed (cron gap) is left uncounted instead of
+        -- silently using a mismatched window.
+        AND (
+          strftime('%w', period_start) = '0'
+          OR strftime('%Y-%W', period_start) = strftime('%Y-%W', ?)
+        )
       GROUP BY user_id
-    `).bind(metric).all<{ user_id: number; count: number }>(),
+    `).bind(metric, today).all<{ user_id: number; count: number }>(),
   ]);
 
   for (const row of dayCounts.results) ensure(row.user_id).days_at_rank_one = row.count;
@@ -929,7 +942,6 @@ export async function getRankOneStats(
     ensure(userId).day_streak = consecutiveCount(dates, today);
   }
 
-  const rankOneWeeks = new Map<number, Set<string>>();
   const weekReps = new Map<number, Map<string, { period_start: string; rank: number; value: number }>>();
   for (const row of weekHistory.results) {
     const wk = mondayOf(row.period_start);
@@ -940,15 +952,24 @@ export async function getRankOneStats(
     }
     weekReps.set(row.user_id, reps);
   }
+
+  const currentWeek = mondayOf(today);
   for (const [userId, reps] of weekReps) {
     const won = new Set<string>();
+    const hasRep = new Set<string>();
     for (const [wk, rep] of reps) {
+      // Same reliability rule as the consistency query above: trust the
+      // current (in-progress) week's snapshot as a live proxy, but a past
+      // week only counts if it actually closed out on its Sunday - anything
+      // else means that week's cron run was missed, so treat it as unknown
+      // rather than using a mismatched window.
+      const isCurrent = wk === currentWeek;
+      const isClosedProperly = rep.period_start === shiftDate(wk, 6);
+      if (!isCurrent && !isClosedProperly) continue;
+      hasRep.add(wk);
       if (rep.rank === 1 && rep.value > 0) won.add(wk);
     }
-    rankOneWeeks.set(userId, won);
-  }
-  for (const [userId, won] of rankOneWeeks) {
-    ensure(userId).week_streak = consecutiveWeeks(won, today);
+    ensure(userId).week_streak = consecutiveWeeks(won, hasRep, today);
   }
 
   return stats;
