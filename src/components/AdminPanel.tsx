@@ -103,7 +103,7 @@ export function AdminPanel({ currentUser }: AdminPanelProps) {
     try {
       setResettingSeason(true);
       const result = await api.resetSeason();
-      setMessage(`Season ${result.archivedSeason} archived - leaderboard, streaks, and daily stats now start fresh from today. Accounts, photos, and everyone's real WakaTime lifetime totals are untouched.`);
+      setMessage(`Season ${result.archivedSeason} archived - leaderboard, streaks, and daily stats now start fresh from this week. Accounts, photos, and everyone's real WakaTime lifetime totals are untouched.`);
       setShowSeasonConfirm(false);
       setSeasonConfirmText('');
       await loadSeasonInfo();
