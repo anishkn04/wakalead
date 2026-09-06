@@ -1125,6 +1125,25 @@ export async function getSeasonHistory(env: Env): Promise<SeasonReset[]> {
 }
 
 /**
+ * The date (YYYY-MM-DD, Nepal timezone) the current season started - i.e.
+ * when the most recent reset happened. Null if a reset has never happened,
+ * meaning there's no lower bound and season 1 goes all the way back.
+ *
+ * Fetchers use this to make a reset actually stick: without it, a normal
+ * multi-day sync (refresh-all, cron, backfill) would happily re-pull real
+ * WakaTime history from before the reset and repopulate daily_stats for
+ * those dates, silently undoing it.
+ */
+export async function getCurrentSeasonStartDate(env: Env): Promise<string | null> {
+  const row = await env.DB.prepare(
+    'SELECT archived_at FROM season_resets ORDER BY season_number DESC LIMIT 1'
+  ).first<{ archived_at: number }>();
+  if (!row) return null;
+  const nepalOffset = 5.75 * 60 * 60 * 1000;
+  return new Date(row.archived_at + nepalOffset).toISOString().slice(0, 10);
+}
+
+/**
  * Archive the current season's stats tables and start fresh. Runs each
  * table's drop-indexes -> rename -> recreate-table -> recreate-indexes
  * sequence fully before moving to the next table, so a mid-way failure
