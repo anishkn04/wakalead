@@ -131,11 +131,16 @@ RM, CB, RB, LB, GK**. Each outfield position is a *weighted blend* of all
 6 attributes (matching how FIFA/FC itself computes position suitability -
 not just "whichever stat is highest"):
 
+Weights below use the current PAC/SHO meanings (PAC = output/lines, SHO =
+active time, per the swap noted above) - e.g. ST is weighted toward PAC
+(output/scoring) with some SHO (pace/time), matching real striker logic
+under the new labels.
+
 | Position | Weighting |
 |---|---|
-| ST | SHO 45% · PAC 25% · DRI 15% · PHY 10% · PAS 5% |
-| RW / LW | PAC 35% · DRI 30% · SHO 20% · PAS 15% |
-| CAM | PAS 40% · DRI 30% · SHO 20% · PAC 10% |
+| ST | PAC 45% · SHO 25% · DRI 15% · PHY 10% · PAS 5% |
+| RW / LW | SHO 35% · DRI 30% · PAC 20% · PAS 15% |
+| CAM | PAS 40% · DRI 30% · PAC 20% · SHO 10% |
 | CM | PAS 30% · PHY 25% · DRI 20% · DEF 15% · PAC 10% |
 | CDM | DEF 40% · PHY 30% · PAS 20% · DRI 10% |
 | LM / RM | PAC 30% · PAS 30% · DRI 25% · DEF 15% |

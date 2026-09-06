@@ -1425,10 +1425,10 @@ async function getCardMetricsForAllUsers(env: Env, scope: CardScope): Promise<Ma
  * cosmetic, not a real signal.
  */
 const POSITION_WEIGHTS: Record<Exclude<CardPosition, 'GK'>, Partial<Record<'pac' | 'sho' | 'pas' | 'dri' | 'def' | 'phy', number>>> = {
-  ST: { sho: 0.45, pac: 0.25, dri: 0.15, phy: 0.10, pas: 0.05 },
-  RW: { pac: 0.35, dri: 0.30, sho: 0.20, pas: 0.15 },
-  LW: { pac: 0.35, dri: 0.30, sho: 0.20, pas: 0.15 },
-  CAM: { pas: 0.40, dri: 0.30, sho: 0.20, pac: 0.10 },
+  ST: { sho: 0.25, pac: 0.45, dri: 0.15, phy: 0.10, pas: 0.05 },
+  RW: { pac: 0.20, dri: 0.30, sho: 0.35, pas: 0.15 },
+  LW: { pac: 0.20, dri: 0.30, sho: 0.35, pas: 0.15 },
+  CAM: { pas: 0.40, dri: 0.30, sho: 0.10, pac: 0.20 },
   CM: { pas: 0.30, phy: 0.25, dri: 0.20, def: 0.15, pac: 0.10 },
   CDM: { def: 0.40, phy: 0.30, pas: 0.20, dri: 0.10 },
   LM: { pac: 0.30, pas: 0.30, dri: 0.25, def: 0.15 },
