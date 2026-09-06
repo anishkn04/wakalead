@@ -1,6 +1,6 @@
 import { Env } from './types';
 import { exchangeCodeForToken, fetchWakaTimeUser, fetchPhotoData } from './wakatime';
-import { createOrUpdateUser, getLeaderboard, getWeeklyData, getAllUsers, deleteUser, banUser, unbanUser, getUserById, getLastSyncTime, getUserTooltipStats, getCompareStats, upsertUserPhoto, getCurrentSeason, getSeasonHistory, resetSeason, getUserSeasonHistory, getUserCard, CardScope } from './database';
+import { createOrUpdateUser, getLeaderboard, getWeeklyData, getAllUsers, deleteUser, banUser, unbanUser, getUserById, getLastSyncTime, getUserTooltipStats, getCompareStats, upsertUserPhoto, getCurrentSeason, getSeasonHistory, resetSeason, getUserSeasonHistory, getUserCard, getAllUserCards, CardScope } from './database';
 import { createSession, verifySession, deleteSession, extractSessionId } from './session';
 import { fetchDataForAllUsers, fetchTodayDataForUser, fetchWeekDataForUser, fetchTodayDataForAllUsers, fetchWeekDataForAllUsers, fetchPhotosForAllUsers } from './fetcher';
 import { getProfileData } from './profile';
@@ -283,6 +283,19 @@ export default {
           weeklyData: { dates, users: weeklyData.map((u: any) => ({ ...u, photo_url: photoUrlFor(request, u.user_id, u.photo_url) })) },
           lastSynced,
         }, 200, 0); // No browser caching - always fetch fresh data
+      }
+
+      // Everyone's FUT-style card at once - public, for the leaderboard's
+      // card gallery. scope=season (default) or scope=career.
+      if (path === '/api/cards') {
+        const scopeParam = url.searchParams.get('scope');
+        const scope: CardScope = scopeParam === 'career' ? 'career' : 'season';
+        const today = formatDate(getNepalDate());
+        const cards = await getAllUserCards(env, scope, today);
+        return jsonResponse({
+          scope,
+          cards: cards.map((c) => ({ ...c, photo_url: photoUrlFor(request, c.user_id, c.photo_url) })),
+        }, 200, 0);
       }
 
       // Hover-card stats for a single user - public, served from D1 only

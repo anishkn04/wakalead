@@ -93,6 +93,13 @@ export interface UserCard {
   days_active: number;
 }
 
+export interface UserCardWithProfile extends UserCard {
+  user_id: number;
+  username: string;
+  display_name: string | null;
+  photo_url: string | null;
+}
+
 export interface UserSeasonStat {
   season_number: number;
   ended_at: number | null;
@@ -313,6 +320,11 @@ class ApiClient {
   /** FUT-style player card, percentile-ranked against every other user. */
   async getUserCard(userId: number, scope: CardScope = 'season'): Promise<UserCard> {
     return this.request<UserCard>(`/user/${userId}/card?scope=${scope}`);
+  }
+
+  /** Everyone's card at once, sorted best overall first. */
+  async getAllCards(scope: CardScope = 'season'): Promise<{ scope: CardScope; cards: UserCardWithProfile[] }> {
+    return this.request(`/cards?scope=${scope}`);
   }
 
   /** That user's aggregated stats for each past (archived) season. */

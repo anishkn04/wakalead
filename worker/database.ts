@@ -1573,3 +1573,29 @@ export async function getUserCard(env: Env, userId: number, scope: CardScope, to
   return cards.get(userId) ?? null;
 }
 
+export interface UserCardWithProfile extends UserCardAttributes {
+  user_id: number;
+  username: string;
+  display_name: string | null;
+  photo_url: string | null;
+}
+
+/** Every non-banned user's card at once, sorted best overall first - for a leaderboard-style FUT card gallery. */
+export async function getAllUserCards(env: Env, scope: CardScope, today: string): Promise<UserCardWithProfile[]> {
+  const [cards, users] = await Promise.all([
+    computeCardsForAllUsers(env, scope, today),
+    env.DB.prepare('SELECT id, username, display_name, photo_url FROM users WHERE is_banned = 0').all<{
+      id: number; username: string; display_name: string | null; photo_url: string | null;
+    }>(),
+  ]);
+
+  const result: UserCardWithProfile[] = [];
+  for (const u of users.results) {
+    const card = cards.get(u.id);
+    if (!card) continue; // no synced data for this user yet
+    result.push({ ...card, user_id: u.id, username: u.username, display_name: u.display_name, photo_url: u.photo_url });
+  }
+  result.sort((a, b) => b.overall - a.overall);
+  return result;
+}
+
