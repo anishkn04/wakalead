@@ -89,6 +89,11 @@ export function FutCardGallery() {
                   {CARD_TYPE_LABEL[c.cardType]} · {c.position}
                   {c.provisional && <span className="text-amber-600 dark:text-amber-400"> · provisional</span>}
                 </p>
+                {c.nextTier && (
+                  <p className="text-[11px] text-slate-400 dark:text-zinc-600 -mt-1">
+                    {c.nextTier.pointsAway} pt{c.nextTier.pointsAway === 1 ? '' : 's'} from {c.nextTier.label}
+                  </p>
+                )}
               </button>
             ))}
           </div>

@@ -78,6 +78,11 @@ export type CardScope = 'season' | 'career';
 export type CardType = 'icon' | 'legend_hero' | 'white_icon' | 'featured_red' | 'base_gold' | 'base_silver';
 export type CardPosition = 'ST' | 'RW' | 'LW' | 'CAM' | 'CM' | 'CDM' | 'LM' | 'RM' | 'CB' | 'RB' | 'LB' | 'GK';
 
+export interface NextTierHint {
+  label: string;
+  pointsAway: number;
+}
+
 export interface UserCard {
   scope: CardScope;
   pac: number;
@@ -91,6 +96,9 @@ export interface UserCard {
   cardType: CardType;
   provisional: boolean;
   days_active: number;
+  trend: 'up' | 'down' | 'flat';
+  nextTier: NextTierHint | null;
+  hotStreak: number | null;
 }
 
 export interface UserCardWithProfile extends UserCard {
