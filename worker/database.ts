@@ -351,25 +351,45 @@ export function isD1BudgetError(error: any): boolean {
 
 /**
  * Fail fast when we already know today's D1 budget is gone (flag set by a
- * previous quota error, auto-expires at UTC midnight when Cloudflare resets
- * free quotas). Returns the friendly message, or null when syncing may
- * proceed. KV-only - costs zero D1 rows, which is the point.
+ * previous quota error). The flag value is the UTC date it was set
+ * (YYYY-MM-DD) and only counts for that same date - KV expiration is
+ * best-effort timing, so an explicit date comparison (not the TTL) is what
+ * actually clears it. KV-only check - costs zero D1 rows, which is the point.
  */
 export async function checkD1Budget(env: Env): Promise<string | null> {
   const flag = await env.SESSIONS.get(D1_BUDGET_EXHAUSTED_KEY);
-  return flag ? D1_BUDGET_EXHAUSTED_MESSAGE : null;
+  if (flag && flag === utcDateStr(Date.now())) return D1_BUDGET_EXHAUSTED_MESSAGE;
+  return null;
+}
+
+/** YYYY-MM-DD in UTC for a ms timestamp. */
+function utcDateStr(ts: number): string {
+  return new Date(ts).toISOString().slice(0, 10);
 }
 
 /**
  * Remember a quota exhaustion so later syncs fail fast instead of burning
  * WakaTime calls and dying halfway through a half-written leaderboard.
+ * The value is today's UTC date - checkD1Budget only honors it for that
+ * same date, so a stuck key can never block a future day. The midnight
+ * expiration is hygiene on top, not the mechanism.
  */
 export async function markD1BudgetExhausted(env: Env): Promise<void> {
   const now = new Date();
   const midnightUtc = Math.floor(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1) / 1000
   );
-  await env.SESSIONS.put(D1_BUDGET_EXHAUSTED_KEY, '1', { expirationAt: midnightUtc });
+  await env.SESSIONS.put(D1_BUDGET_EXHAUSTED_KEY, utcDateStr(Date.now()), {
+    expirationAt: midnightUtc,
+  });
+}
+
+/**
+ * Drop the budget-exhausted flag after a sync actually succeeded - the
+ * budget clearly recovered, so don't wait on any expiry.
+ */
+export async function clearD1BudgetFlag(env: Env): Promise<void> {
+  await env.SESSIONS.delete(D1_BUDGET_EXHAUSTED_KEY);
 }
 
 /** How long fetch_log rows are kept - readers only ever look back hours/days. */

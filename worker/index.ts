@@ -1,6 +1,6 @@
 import { Env } from './types';
 import { exchangeCodeForToken, fetchWakaTimeUser, fetchPhotoData } from './wakatime';
-import { createOrUpdateUser, getLeaderboard, getWeeklyData, getAllUsers, deleteUser, banUser, unbanUser, getUserById, getLastSyncTime, getUserTooltipStats, getCompareStats, upsertUserPhoto, getCurrentSeason, getSeasonHistory, resetSeason, getUserSeasonHistory, getUserCard, getAllUserCards, getSeasonStandings, getRankOneStats, getUserDailyHistory, invalidateCardCache, pruneFetchLog, isD1BudgetError, checkD1Budget, markD1BudgetExhausted, D1_BUDGET_EXHAUSTED_MESSAGE, CardScope } from './database';
+import { createOrUpdateUser, getLeaderboard, getWeeklyData, getAllUsers, deleteUser, banUser, unbanUser, getUserById, getLastSyncTime, getUserTooltipStats, getCompareStats, upsertUserPhoto, getCurrentSeason, getSeasonHistory, resetSeason, getUserSeasonHistory, getUserCard, getAllUserCards, getSeasonStandings, getRankOneStats, getUserDailyHistory, invalidateCardCache, pruneFetchLog, isD1BudgetError, checkD1Budget, markD1BudgetExhausted, clearD1BudgetFlag, D1_BUDGET_EXHAUSTED_MESSAGE, CardScope } from './database';
 import { createSession, verifySession, deleteSession, extractSessionId } from './session';
 import { fetchDataForAllUsers, fetchTodayDataForUser, fetchWeekDataForUser, fetchTodayDataForAllUsers, fetchWeekDataForAllUsers, fetchPhotosForAllUsers } from './fetcher';
 import { getProfileData } from './profile';
@@ -102,6 +102,7 @@ export default {
           await fetchDataForAllUsers(env);
           await invalidateCardCache(env);
           await pruneFetchLog(env);
+          await clearD1BudgetFlag(env);
         } catch (error: any) {
           if (isD1BudgetError(error)) await markD1BudgetExhausted(env);
           console.error('Scheduled sync failed:', error?.message || error);
@@ -459,6 +460,7 @@ export default {
           await env.SESSIONS.put('refresh_all_at', String(now));
           await fetchWeekDataForAllUsers(env);
           await invalidateCardCache(env);
+          await clearD1BudgetFlag(env);
           return new Response(JSON.stringify({ success: true, message: 'Week data refreshed for all users' }), {
             status: 200,
             headers: {
@@ -595,6 +597,7 @@ export default {
             const useToday = url.searchParams.get('today') === 'true';
             await fetchDataForAllUsers(env, useToday, dateParam || undefined);
             await invalidateCardCache(env);
+            await clearD1BudgetFlag(env);
             return jsonResponse({ success: true, message: `Data fetch initiated for ${dateParam || (useToday ? 'today' : 'yesterday')}` });
           } catch (error: any) {
             if (isD1BudgetError(error)) {
