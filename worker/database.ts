@@ -2151,7 +2151,7 @@ export async function computeCardsForAllUsers(env: Env, scope: CardScope, today:
 }
 
 const CARD_CACHE_TTL_SECONDS = 3600;
-const CARD_CACHE_PREFIX = 'card_cache:v2:';
+const CARD_CACHE_PREFIX = 'card_cache:v3:';
 
 /**
  * Percentile ranking needs the whole cohort recomputed together, and both
@@ -2184,9 +2184,9 @@ async function getCachedCardsForAllUsers(env: Env, scope: CardScope, today: stri
  * the long card TTL never serves stale numbers after a sync.
  */
 export async function invalidateCardCache(env: Env): Promise<void> {
-  // v2 prefix is current; the legacy v1 prefix is cleared too so the
-  // catch-up field rollout never serves a stale shapeless entry.
-  for (const prefix of [CARD_CACHE_PREFIX, 'card_cache:']) {
+  // v3 prefix is current; legacy prefixes are cleared too so stale
+  // computations (pre-catch-up, pre-SHO-reweight) are never served.
+  for (const prefix of [CARD_CACHE_PREFIX, 'card_cache:v2:', 'card_cache:']) {
     let cursor: string | undefined;
     do {
       const page = await env.SESSIONS.list({ prefix, cursor });
