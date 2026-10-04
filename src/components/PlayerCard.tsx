@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { UserCard, CardType } from '../api';
 import './PlayerCard.css';
 
@@ -66,23 +67,105 @@ interface PlayerCardProps {
   downloadable?: boolean;
 }
 
-function CardStat({ label, value, tip }: { label: string; value: number; tip?: string }) {
+interface ActiveTip {
+  text: string;
+  rect: { top: number; left: number; width: number };
+}
+
+function CardStat({
+  label,
+  value,
+  tip,
+  onShow,
+  onHide,
+}: {
+  label: string;
+  value: number;
+  tip?: string;
+  onShow: (text: string, el: HTMLElement) => void;
+  onHide: () => void;
+}) {
+  if (!tip) {
+    return (
+      <div className="stat">
+        <span className="stat-value">{value}</span>
+        <span className="stat-label">{label}</span>
+      </div>
+    );
+  }
   return (
-    <div className="stat stat-tip" tabIndex={0}>
+    <div
+      className="stat stat-live"
+      tabIndex={0}
+      onMouseEnter={(e) => onShow(tip, e.currentTarget)}
+      onMouseLeave={onHide}
+      onFocus={(e) => onShow(tip, e.currentTarget)}
+      onBlur={onHide}
+      // Tapping a stat inside the gallery must not follow the card link.
+      onClick={(e) => {
+        e.stopPropagation();
+        onShow(tip, e.currentTarget);
+      }}
+    >
       <span className="stat-value">{value}</span>
       <span className="stat-label">{label}</span>
-      {tip && <span className="stat-bubble" role="tooltip">{tip}</span>}
     </div>
+  );
+}
+
+/**
+ * Body-portalled tooltip for card stats. The card itself is clipped by its
+ * silhouette (clip-path + overflow hidden), so any bubble rendered inside
+ * it gets cut off at the edges - this one lives in document.body and is
+ * positioned from the stat's bounding rect instead.
+ */
+function TipLayer({ tip }: { tip: ActiveTip | null }) {
+  const [left, setLeft] = useState<number | null>(null);
+  useEffect(() => {
+    if (!tip) return;
+    const cx = tip.rect.left + tip.rect.width / 2;
+    // Clamp without measuring the bubble: half of its max-width as margin.
+    setLeft(Math.min(Math.max(cx, 120), window.innerWidth - 120));
+  }, [tip]);
+  if (!tip || left === null) return null;
+  return createPortal(
+    <div
+      className="card-tip-portal"
+      role="tooltip"
+      style={{ left, top: Math.max(tip.rect.top - 8, 4) }}
+    >
+      {tip.text}
+    </div>,
+    document.body
   );
 }
 
 export function PlayerCard({ card, name, photoUrl, width = 300, downloadable = false }: PlayerCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
+  const [tip, setTip] = useState<ActiveTip | null>(null);
 
   useEffect(() => {
     ensureCardShapeDef();
   }, []);
+
+  // The anchor moves on scroll/resize - dismiss instead of chasing it.
+  useEffect(() => {
+    if (!tip) return;
+    const dismiss = () => setTip(null);
+    window.addEventListener('scroll', dismiss, true);
+    window.addEventListener('resize', dismiss);
+    return () => {
+      window.removeEventListener('scroll', dismiss, true);
+      window.removeEventListener('resize', dismiss);
+    };
+  }, [tip]);
+
+  const showTip = (text: string, el: HTMLElement) => {
+    const r = el.getBoundingClientRect();
+    setTip({ text, rect: { top: r.top, left: r.left, width: r.width } });
+  };
+  const hideTip = () => setTip(null);
 
   const skinClass = SKIN_CLASS[card.cardType];
   const showHotStreakBadge = card.hotStreak !== null && card.cardType !== 'featured_red';
@@ -130,25 +213,40 @@ export function PlayerCard({ card, name, photoUrl, width = 300, downloadable = f
           <img src={photoUrl || '/player-avatar-placeholder.png'} alt={name} />
         </div>
         <div className="card-meta">
-          <div className="rating flex items-center gap-1 stat-tip" tabIndex={0}>
+          <div
+            className="rating flex items-center gap-1 stat-live"
+            tabIndex={0}
+            onMouseEnter={(e) => card.catchUp?.overall.text && showTip(card.catchUp.overall.text, e.currentTarget)}
+            onMouseLeave={hideTip}
+            onFocus={(e) => card.catchUp?.overall.text && showTip(card.catchUp.overall.text, e.currentTarget)}
+            onBlur={hideTip}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (card.catchUp?.overall.text) showTip(card.catchUp.overall.text, e.currentTarget);
+            }}
+          >
             {card.overall}
             {card.trend !== 'flat' && (
               <span style={{ color: TREND_COLOR[card.trend], fontSize: '0.4em' }}>{TREND_GLYPH[card.trend]}</span>
             )}
-            {card.catchUp?.overall.text && <span className="stat-bubble" role="tooltip">{card.catchUp.overall.text}</span>}
           </div>
           <div className="position">{card.position}</div>
         </div>
         <div className="card-name">{name}</div>
         <div className="card-stats">
-          <CardStat label="PAC" value={card.pac} tip={card.catchUp?.pac.text} />
-          <CardStat label="SHO" value={card.sho} tip={card.catchUp?.sho.text} />
-          <CardStat label="PAS" value={card.pas} tip={card.catchUp?.pas.text} />
-          <CardStat label="DRI" value={card.dri} tip={card.catchUp?.dri.text} />
-          <CardStat label="DEF" value={card.def} tip={card.catchUp?.def.text} />
-          <CardStat label="PHY" value={card.phy} tip={card.catchUp?.phy.text} />
+          <CardStat label="PAC" value={card.pac} tip={card.catchUp?.pac.text} onShow={showTip} onHide={hideTip} />
+          <CardStat label="SHO" value={card.sho} tip={card.catchUp?.sho.text} onShow={showTip} onHide={hideTip} />
+          <CardStat label="PAS" value={card.pas} tip={card.catchUp?.pas.text} onShow={showTip} onHide={hideTip} />
+          <CardStat label="DRI" value={card.dri} tip={card.catchUp?.dri.text} onShow={showTip} onHide={hideTip} />
+          <CardStat label="DEF" value={card.def} tip={card.catchUp?.def.text} onShow={showTip} onHide={hideTip} />
+          <CardStat label="PHY" value={card.phy} tip={card.catchUp?.phy.text} onShow={showTip} onHide={hideTip} />
         </div>
       </div>
+
+      {/* Tap readout for touch (no hover there): desktop uses the portal
+          bubble above and never sees this line. */}
+      {tip && <p className="card-tip-caption">{tip.text}</p>}
+      <TipLayer tip={tip} />
 
       {downloadable && (
         <button
