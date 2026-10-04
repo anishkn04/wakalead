@@ -8,7 +8,7 @@ import { Header } from '../components/Header';
 
 const ATTRS = [
   { short: 'PAC', name: 'Pace', desc: 'Active coding time', formula: 'human_seconds + 0.7 × ai_seconds', chip: 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300' },
-  { short: 'SHO', name: 'Shooting', desc: 'Lines written', formula: 'human_lines + 0.7 × ai_lines', chip: 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300' },
+  { short: 'SHO', name: 'Shooting', desc: 'Lines written', formula: 'human_lines + 0.3 × ai_lines', chip: 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300' },
   { short: 'PAS', name: 'Passing', desc: 'Projects + languages with 30+ minutes each', formula: 'count(names ≥ 30 min)', chip: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' },
   { short: 'DRI', name: 'Dribbling', desc: 'Editors + OSs with 30+ minutes each', formula: 'count(names ≥ 30 min)', chip: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300' },
   { short: 'DEF', name: 'Defending', desc: 'Consistency: active days ÷ tracked days (a day counts at 40+ min)', formula: 'active ÷ tracked', chip: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' },

@@ -1414,18 +1414,20 @@ export async function getUserSeasonHistory(env: Env, userId: number): Promise<Us
  * the full design rationale, gaming-vector analysis, and decision log.
  *
  * This app is AI-native - AI-assisted work isn't something to suppress,
- * so PAC/SHO count both human and AI time/lines, just with AI weighted at
- * 0.7x (directing an AI well is a real skill, just not quite the same as
- * doing it yourself). PAS/DRI/DEF/PHY are diversity counts or ratios by
- * nature and don't need this distinction at all.
+ * so PAC/SHO count both human and AI time/lines, with AI discounted.
+ * Time is discounted lightly (supervising an agent is still real time at
+ * the keyboard); lines are discounted hard (agents can emit thousands of
+ * lines per minute, so AI line-spew must not out-shoot careful human work).
+ * PAS/DRI/DEF/PHY are diversity counts or ratios by nature and don't need
+ * this distinction at all.
  */
 export type CardScope = 'season' | 'career';
 export type CardType = 'icon' | 'legend_hero' | 'white_icon' | 'featured_red' | 'base_gold' | 'base_silver';
 export type CardPosition = 'ST' | 'RW' | 'LW' | 'CAM' | 'CM' | 'CDM' | 'LM' | 'RM' | 'CB' | 'RB' | 'LB' | 'GK';
 
 interface RawUserCardMetrics {
-  time_score: number;   // human_seconds + 0.7 * ai_seconds
-  output_score: number; // human_lines + 0.7 * ai_lines
+  time_score: number;   // human_seconds + AI_TIME_WEIGHT * ai_seconds
+  output_score: number; // human_lines + AI_LINE_WEIGHT * ai_lines
   days_active: number;  // days with >= CARD_ACTIVE_SECONDS of total_seconds
   days_tracked: number; // days with any synced row at all
   longest_streak: number;
@@ -1478,6 +1480,8 @@ const CARD_ACTIVE_SECONDS = 40 * 60; // a day only counts toward DEF/PHY at 40+ 
 const DIVERSITY_MIN_SECONDS = 30 * 60; // a project/language/editor/os only counts toward PAS/DRI breadth with 30+ minutes (you actually used it)
 const WHITE_ICON_BAR = 90; // every attribute at 90+ (paired with reigning + 2+ titles for White Icon)
 const ON_FORM_MIN_SECONDS = 24 * 3600; // more than 24 hours coded in the trailing 7 days triggers On Form
+const AI_TIME_WEIGHT = 0.7; // PAC: supervising an agent is still real time at the keyboard
+const AI_LINE_WEIGHT = 0.3; // SHO: agents emit lines far faster than humans, so AI lines count for little
 
 /**
  * Fractional percentile rank in [0, 1] for each value in `values`, tied
@@ -1610,10 +1614,10 @@ async function getCardMetricsForAllUsers(env: Env, scope: CardScope, today: stri
   const activeDatesByUser = new Map<number, string[]>();
   for (const row of dailyRows.results) {
     const m = ensure(row.user_id);
-    const dayActivity = (row.human_seconds || 0) + 0.7 * (row.ai_seconds || 0)
-      + (row.human_lines || 0) + 0.7 * (row.ai_lines || 0);
-    m.time_score += (row.human_seconds || 0) + 0.7 * (row.ai_seconds || 0);
-    m.output_score += (row.human_lines || 0) + 0.7 * (row.ai_lines || 0);
+    const dayActivity = (row.human_seconds || 0) + AI_TIME_WEIGHT * (row.ai_seconds || 0)
+      + (row.human_lines || 0) + AI_LINE_WEIGHT * (row.ai_lines || 0);
+    m.time_score += (row.human_seconds || 0) + AI_TIME_WEIGHT * (row.ai_seconds || 0);
+    m.output_score += (row.human_lines || 0) + AI_LINE_WEIGHT * (row.ai_lines || 0);
     if (row.date >= recentStart) m.recentActivity += dayActivity;
     else if (row.date >= priorStart && row.date <= priorEnd) m.priorActivity += dayActivity;
     if (row.date >= recentStart && row.date <= today) m.last7DaySeconds += row.total_seconds || 0;

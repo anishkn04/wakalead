@@ -15,7 +15,7 @@ SHO = shooting/output.)
 | Stat | Raw metric (before percentile ranking) |
 |---|---|
 | **PAC** | `human_seconds + 0.7 × ai_seconds` - active coding time |
-| **SHO** | `human_lines + 0.7 × ai_lines` - output/lines written |
+| **SHO** | `human_lines + 0.3 × ai_lines` - output/lines written (AI lines count for little - agents emit them far faster than humans) |
 | **PAS** | projects + languages with **30+ minutes** - meaningful breadth |
 | **DRI** | editors + OSs with **30+ minutes** - real tool versatility |
 | **DEF** | `days_active / days_tracked` - consistency ratio |
