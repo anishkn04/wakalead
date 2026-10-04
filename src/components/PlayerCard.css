@@ -197,6 +197,45 @@
   gap: 0.15em;
   line-height: 1;
 }
+/* Catch-up hint tooltip: hidden until hover/focus, never in PNG exports
+   (html-to-image captures the non-hovered DOM state). */
+.pitch-card .stat-tip {
+  position: relative;
+  cursor: help;
+  outline: none;
+}
+.pitch-card .stat-tip:focus-visible {
+  filter: brightness(1.15);
+}
+.pitch-card .stat-bubble {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 0.5em);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  width: max-content;
+  max-width: 13em;
+  padding: 0.45em 0.6em;
+  border-radius: 0.5em;
+  background: rgba(10, 10, 12, 0.95);
+  color: #f4f4f5;
+  font-family: "Inter", "Archivo", sans-serif;
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: normal;
+  text-align: center;
+  box-shadow: 0 0.4em 1.2em rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+.pitch-card .stat-tip:hover .stat-bubble,
+.pitch-card .stat-tip:focus .stat-bubble,
+.pitch-card .stat-tip:focus-visible .stat-bubble {
+  display: block;
+}
 .pitch-card .stat-value {
   font-weight: 600;
   font-size: 1.375em;

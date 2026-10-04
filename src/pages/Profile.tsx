@@ -436,7 +436,7 @@ export function Profile() {
             </section>
 
             {/* Player card */}
-            <Section title="Player card" subtitle="Percentile-ranked against every other user - see the legend below for how it's built">
+            <Section title="Player card" subtitle="Percentile-ranked against every other user - hover any stat to see what it takes to tie the leader">
               <div className="flex items-center justify-center gap-2 mb-6">
                 <button
                   onClick={() => setCardScope('season')}

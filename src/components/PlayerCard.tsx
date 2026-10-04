@@ -66,6 +66,16 @@ interface PlayerCardProps {
   downloadable?: boolean;
 }
 
+function CardStat({ label, value, tip }: { label: string; value: number; tip?: string }) {
+  return (
+    <div className="stat stat-tip" tabIndex={0}>
+      <span className="stat-value">{value}</span>
+      <span className="stat-label">{label}</span>
+      {tip && <span className="stat-bubble" role="tooltip">{tip}</span>}
+    </div>
+  );
+}
+
 export function PlayerCard({ card, name, photoUrl, width = 300, downloadable = false }: PlayerCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
@@ -120,22 +130,23 @@ export function PlayerCard({ card, name, photoUrl, width = 300, downloadable = f
           <img src={photoUrl || '/player-avatar-placeholder.png'} alt={name} />
         </div>
         <div className="card-meta">
-          <div className="rating flex items-center gap-1">
+          <div className="rating flex items-center gap-1 stat-tip" tabIndex={0}>
             {card.overall}
             {card.trend !== 'flat' && (
               <span style={{ color: TREND_COLOR[card.trend], fontSize: '0.4em' }}>{TREND_GLYPH[card.trend]}</span>
             )}
+            {card.catchUp?.overall.text && <span className="stat-bubble" role="tooltip">{card.catchUp.overall.text}</span>}
           </div>
           <div className="position">{card.position}</div>
         </div>
         <div className="card-name">{name}</div>
         <div className="card-stats">
-          <div className="stat"><span className="stat-value">{card.pac}</span><span className="stat-label">PAC</span></div>
-          <div className="stat"><span className="stat-value">{card.sho}</span><span className="stat-label">SHO</span></div>
-          <div className="stat"><span className="stat-value">{card.pas}</span><span className="stat-label">PAS</span></div>
-          <div className="stat"><span className="stat-value">{card.dri}</span><span className="stat-label">DRI</span></div>
-          <div className="stat"><span className="stat-value">{card.def}</span><span className="stat-label">DEF</span></div>
-          <div className="stat"><span className="stat-value">{card.phy}</span><span className="stat-label">PHY</span></div>
+          <CardStat label="PAC" value={card.pac} tip={card.catchUp?.pac.text} />
+          <CardStat label="SHO" value={card.sho} tip={card.catchUp?.sho.text} />
+          <CardStat label="PAS" value={card.pas} tip={card.catchUp?.pas.text} />
+          <CardStat label="DRI" value={card.dri} tip={card.catchUp?.dri.text} />
+          <CardStat label="DEF" value={card.def} tip={card.catchUp?.def.text} />
+          <CardStat label="PHY" value={card.phy} tip={card.catchUp?.phy.text} />
         </div>
       </div>
 

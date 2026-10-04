@@ -1444,6 +1444,15 @@ export interface NextTierHint {
   pointsAway: number;
 }
 
+export type CatchUpKey = 'pac' | 'sho' | 'pas' | 'dri' | 'def' | 'phy' | 'overall';
+
+export interface CatchUpHint {
+  text: string;
+  isLeader: boolean;
+  leaderName: string | null;
+  leaderRating: number;
+}
+
 export interface UserCardAttributes {
   pac: number;
   sho: number;
@@ -1459,6 +1468,7 @@ export interface UserCardAttributes {
   trend: 'up' | 'down' | 'flat';
   nextTier: NextTierHint | null;
   hotStreak: number | null; // the higher of day_streak/week_streak when >= 3, else null
+  catchUp: Record<CatchUpKey, CatchUpHint>;
 }
 
 const CARD_RATING_FLOOR = 55; // worst-in-cohort attribute still reads as solidly average
@@ -1493,6 +1503,26 @@ function percentileRanks(values: number[]): number[] {
 
 function rescale(percentile: number, floor: number = CARD_RATING_FLOOR): number {
   return Math.round(floor + percentile * (99 - floor));
+}
+
+/** Compact duration for catch-up hints (worker has no access to src/api formatDuration). */
+function formatGapDuration(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m`;
+  return `${s}s`;
+}
+
+/** Compact line count for catch-up hints. */
+function formatGapLines(lines: number): string {
+  const v = Math.max(0, Math.round(lines));
+  if (v >= 1000) {
+    const k = v / 1000;
+    return `${(v % 1000 === 0 ? k.toFixed(0) : k.toFixed(1)).replace(/\.0$/, '')}k`;
+  }
+  return String(v);
 }
 
 /** Count of names with at least DIVERSITY_MIN_SECONDS - breadth with a meaningful-use bar. */
@@ -1887,10 +1917,17 @@ export async function computeCardsForAllUsers(env: Env, scope: CardScope, today:
     overallByUser.set(id, Math.round((r.pac + r.sho + r.pas + r.dri + r.def + r.phy) / 6));
   }
 
-  const [championInfo, rankOneStats] = await Promise.all([
+  const [championInfo, rankOneStats, usersRes] = await Promise.all([
     getSeasonChampionCounts(env),
     getRankOneStats(env, 'total', today),
+    env.DB.prepare(
+      'SELECT id, username, display_name FROM users WHERE is_banned = 0'
+    ).all<{ id: number; username: string; display_name: string | null }>(),
   ]);
+  const nameById = new Map<number, string>();
+  for (const u of usersRes.results || []) {
+    nameById.set(u.id, u.display_name || u.username);
+  }
 
   const lowestOverallUserId = userIds.length > 0
     ? userIds.reduce((worst, id) => (overallByUser.get(id)! < overallByUser.get(worst)! ? id : worst), userIds[0])
@@ -1900,6 +1937,64 @@ export async function computeCardsForAllUsers(env: Env, scope: CardScope, today:
     : null;
 
   const cohortTooSmall = userIds.length < CARD_MIN_COHORT;
+
+  // Catch-up leaders: highest rating per stat (ties -> highest raw, then
+  // lower id). Pure JS over the already-fetched maps - zero extra D1 reads.
+  const rawOf = (id: number): RawUserCardMetrics => raw.get(id)!;
+  const ratingOf = (id: number, key: CatchUpKey): number =>
+    key === 'overall' ? overallByUser.get(id)! : ratingsByUser.get(id)![key];
+  const rawScalarOf = (id: number, key: CatchUpKey): number => {
+    const m = rawOf(id);
+    switch (key) {
+      case 'pac': return m.time_score;
+      case 'sho': return m.output_score;
+      case 'pas': return m.distinct_projects + m.distinct_languages;
+      case 'dri': return m.distinct_editors + m.distinct_os;
+      case 'def': return m.days_tracked > 0 ? m.days_active / m.days_tracked : 0;
+      case 'phy': return 0; // blended stat - handled via its two components
+      case 'overall': return overallByUser.get(id)!;
+    }
+  };
+  const leaderByKey = new Map<CatchUpKey, number>();
+  for (const key of ['pac', 'sho', 'pas', 'dri', 'def', 'phy', 'overall'] as CatchUpKey[]) {
+    let best: number | null = null;
+    for (const id of userIds) {
+      if (best === null) { best = id; continue; }
+      const r = ratingOf(id, key) - ratingOf(best, key);
+      if (r > 0) { best = id; continue; }
+      if (r < 0) continue;
+      const d = rawScalarOf(id, key) - rawScalarOf(best, key);
+      if (d > 0 || (d === 0 && id < best)) best = id;
+    }
+    if (best !== null) leaderByKey.set(key, best);
+  }
+  // PHY ties on blended rating are broken by streak, then project average.
+  if (userIds.length > 0) {
+    const phyLeader = leaderByKey.get('phy')!;
+    const phyRating = ratingOf(phyLeader, 'phy');
+    let best = phyLeader;
+    for (const id of userIds) {
+      if (ratingOf(id, 'phy') !== phyRating) continue;
+      const a = rawOf(id), b = rawOf(best);
+      if (a.longest_streak > b.longest_streak ||
+        (a.longest_streak === b.longest_streak &&
+          (a.maxProjectSeconds > b.maxProjectSeconds ||
+            (a.maxProjectSeconds === b.maxProjectSeconds && id < best)))) {
+        best = id;
+      }
+    }
+    leaderByKey.set('phy', best);
+  }
+
+  /** Minimal extra all-active days N with (a+N)/(t+N) >= leader ratio. Null when unchasable (leader perfect). */
+  function defDaysNeeded(a: number, t: number, la: number, lt: number): number | null {
+    if (lt <= 0) return 0;
+    const target = la / lt;
+    const mine = t > 0 ? a / t : 0;
+    if (mine >= target) return 0;
+    if (target >= 1) return null; // leader perfect - only ever-present activity chases it
+    return Math.ceil((target * t - a) / (1 - target));
+  }
 
   const cards = new Map<number, UserCardAttributes>();
   for (const id of userIds) {
@@ -1953,6 +2048,88 @@ export async function computeCardsForAllUsers(env: Env, scope: CardScope, today:
       ? Math.max(rankStreak.day_streak, rankStreak.week_streak)
       : null;
 
+    // Catch-up hints: raw gap to whoever holds the top rating for each
+    // stat, with their name. Ratings are cohort-relative so the hint is
+    // "tie the leader's raw" - passing them ties them, but the rating only
+    // moves if nobody else in the full cohort sits between you.
+    const mine = raw.get(id)!;
+    const catchUp = {} as Record<CatchUpKey, CatchUpHint>;
+    const leaderText = (key: CatchUpKey): { name: string; rating: number } => ({
+      name: nameById.get(leaderByKey.get(key)!) ?? 'leader',
+      rating: ratingOf(leaderByKey.get(key)!, key),
+    });
+    {
+      const l = leaderByKey.get('pac')!;
+      const gap = Math.max(0, rawOf(l).time_score - mine.time_score);
+      const { name, rating } = leaderText('pac');
+      catchUp.pac = gap <= 0
+        ? { text: `You lead PAC at ${r.pac}`, isLeader: true, leaderName: name, leaderRating: rating }
+        : { text: `~${formatGapDuration(gap)} more coding time to tie ${name}'s ${rating}`, isLeader: false, leaderName: name, leaderRating: rating };
+    }
+    {
+      const l = leaderByKey.get('sho')!;
+      const gap = Math.max(0, rawOf(l).output_score - mine.output_score);
+      const { name, rating } = leaderText('sho');
+      catchUp.sho = gap <= 0
+        ? { text: `You lead SHO at ${r.sho}`, isLeader: true, leaderName: name, leaderRating: rating }
+        : { text: `~${formatGapLines(gap)} more lines to tie ${name}'s ${rating}`, isLeader: false, leaderName: name, leaderRating: rating };
+    }
+    {
+      const l = leaderByKey.get('pas')!;
+      const need = Math.max(0, (rawOf(l).distinct_projects + rawOf(l).distinct_languages) - (mine.distinct_projects + mine.distinct_languages));
+      const { name, rating } = leaderText('pas');
+      catchUp.pas = need <= 0
+        ? { text: `You lead PAS at ${r.pas}`, isLeader: true, leaderName: name, leaderRating: rating }
+        : { text: `+${need} project${need === 1 ? '' : 's'}/language${need === 1 ? '' : 's'} with 30m+ to tie ${name}'s ${rating}`, isLeader: false, leaderName: name, leaderRating: rating };
+    }
+    {
+      const l = leaderByKey.get('dri')!;
+      const need = Math.max(0, (rawOf(l).distinct_editors + rawOf(l).distinct_os) - (mine.distinct_editors + mine.distinct_os));
+      const { name, rating } = leaderText('dri');
+      catchUp.dri = need <= 0
+        ? { text: `You lead DRI at ${r.dri}`, isLeader: true, leaderName: name, leaderRating: rating }
+        : { text: `+${need} editor${need === 1 ? '' : 's'}/OS with 30m+ to tie ${name}'s ${rating}`, isLeader: false, leaderName: name, leaderRating: rating };
+    }
+    {
+      const l = leaderByKey.get('def')!;
+      const lm = rawOf(l);
+      const need = defDaysNeeded(mine.days_active, mine.days_tracked, lm.days_active, lm.days_tracked);
+      const { name, rating } = leaderText('def');
+      const pct = (v: number) => `${Math.round(v * 100)}%`;
+      const mineRatio = mine.days_tracked > 0 ? mine.days_active / mine.days_tracked : 0;
+      const leaderRatio = lm.days_tracked > 0 ? lm.days_active / lm.days_tracked : 0;
+      if ((need ?? 0) <= 0) {
+        catchUp.def = { text: `You lead DEF at ${r.def}`, isLeader: true, leaderName: name, leaderRating: rating };
+      } else if (need === null) {
+        catchUp.def = { text: `DEF ${pct(mineRatio)} vs ${name}'s perfect ${lm.days_active}/${lm.days_tracked} - code 40m+ every day to chase it`, isLeader: false, leaderName: name, leaderRating: rating };
+      } else {
+        catchUp.def = { text: `+${need} 40m+ day${need === 1 ? '' : 's'} (no idle days) to tie ${name}'s ${rating} (${pct(mineRatio)} vs ${pct(leaderRatio)})`, isLeader: false, leaderName: name, leaderRating: rating };
+      }
+    }
+    {
+      const l = leaderByKey.get('phy')!;
+      const lm = rawOf(l);
+      const streakGap = Math.max(0, lm.longest_streak - mine.longest_streak);
+      const projGap = Math.max(0, lm.maxProjectSeconds - mine.maxProjectSeconds);
+      const { name, rating } = leaderText('phy');
+      if (streakGap <= 0 && projGap <= 0) {
+        catchUp.phy = { text: `You lead PHY at ${r.phy}`, isLeader: true, leaderName: name, leaderRating: rating };
+      } else {
+        const parts: string[] = [];
+        if (streakGap > 0) parts.push(`+${streakGap}d streak (yours ${mine.longest_streak}d vs ${streakGap + mine.longest_streak}d)`);
+        if (projGap > 0) parts.push(`~${formatGapDuration(projGap)} more avg top-project time`);
+        catchUp.phy = { text: `${parts.join(' + ')} to tie ${name}'s ${rating}`, isLeader: false, leaderName: name, leaderRating: rating };
+      }
+    }
+    {
+      const l = leaderByKey.get('overall')!;
+      const gap = Math.max(0, overallByUser.get(l)! - overall);
+      const { name, rating } = leaderText('overall');
+      catchUp.overall = gap <= 0
+        ? { text: `You lead overall at ${overall}`, isLeader: true, leaderName: name, leaderRating: rating }
+        : { text: `+${gap} overall pts to tie ${name}'s ${rating}`, isLeader: false, leaderName: name, leaderRating: rating };
+    }
+
     cards.set(id, {
       ...attrs,
       overall,
@@ -1963,13 +2140,14 @@ export async function computeCardsForAllUsers(env: Env, scope: CardScope, today:
       trend,
       nextTier,
       hotStreak,
+      catchUp,
     });
   }
   return cards;
 }
 
 const CARD_CACHE_TTL_SECONDS = 3600;
-const CARD_CACHE_PREFIX = 'card_cache:';
+const CARD_CACHE_PREFIX = 'card_cache:v2:';
 
 /**
  * Percentile ranking needs the whole cohort recomputed together, and both
@@ -2002,12 +2180,16 @@ async function getCachedCardsForAllUsers(env: Env, scope: CardScope, today: stri
  * the long card TTL never serves stale numbers after a sync.
  */
 export async function invalidateCardCache(env: Env): Promise<void> {
-  let cursor: string | undefined;
-  do {
-    const page = await env.SESSIONS.list({ prefix: CARD_CACHE_PREFIX, cursor });
-    await Promise.all(page.keys.map((k) => env.SESSIONS.delete(k.name)));
-    cursor = page.list_complete ? undefined : page.cursor;
-  } while (cursor);
+  // v2 prefix is current; the legacy v1 prefix is cleared too so the
+  // catch-up field rollout never serves a stale shapeless entry.
+  for (const prefix of [CARD_CACHE_PREFIX, 'card_cache:']) {
+    let cursor: string | undefined;
+    do {
+      const page = await env.SESSIONS.list({ prefix, cursor });
+      await Promise.all(page.keys.map((k) => env.SESSIONS.delete(k.name)));
+      cursor = page.list_complete ? undefined : page.cursor;
+    } while (cursor);
+  }
 }
 
 export async function getUserCard(env: Env, userId: number, scope: CardScope, today: string): Promise<UserCardAttributes | null> {

@@ -83,6 +83,15 @@ export interface NextTierHint {
   pointsAway: number;
 }
 
+export interface CatchUpHint {
+  text: string;
+  isLeader: boolean;
+  leaderName: string | null;
+  leaderRating: number;
+}
+
+export type CatchUpKey = 'pac' | 'sho' | 'pas' | 'dri' | 'def' | 'phy' | 'overall';
+
 export interface UserCard {
   scope: CardScope;
   pac: number;
@@ -99,6 +108,8 @@ export interface UserCard {
   trend: 'up' | 'down' | 'flat';
   nextTier: NextTierHint | null;
   hotStreak: number | null;
+  /** Raw gap to whoever holds the top rating per stat (same scope). Absent on stale cached cards. */
+  catchUp?: Record<CatchUpKey, CatchUpHint>;
 }
 
 export interface UserCardWithProfile extends UserCard {
